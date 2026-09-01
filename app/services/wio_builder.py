@@ -8,8 +8,8 @@ from app.services.ranker import rank, detect_disagreements
 def build_wio(query_text: str, resolved_location: dict, valid_from, valid_to, horizon: str,
               ceos: List[CanonicalEvidenceObject], lang: str = "en") -> WeatherIntelligenceObject:
     now = datetime.now(timezone.utc)
-    q_lat = resolved_location.get("lat", 21.14)
-    q_lon = resolved_location.get("lon", 79.08)
+    q_lat = resolved_location["lat"]
+    q_lon = resolved_location["lon"]
 
     scored = rank(ceos, q_lat, q_lon, now)
     # weather panel — pick best evidence per variable
@@ -37,7 +37,11 @@ def build_wio(query_text: str, resolved_location: dict, valid_from, valid_to, ho
             "source": ev.source,
             "valid_from": ev.valid_from.isoformat() if ev.valid_from else None,
             "valid_to": ev.valid_to.isoformat() if ev.valid_to else None,
+            "evidence_ids": [ev.evidence_id] + [e2.evidence_id for _, e2 in scored if e2.variable == "precipitation_probability"],
         }
+        member_values = [member.value for _, member in scored if member.variable == "precipitation_amount" and member.ensemble_member is not None and member.value is not None]
+        if member_values:
+            weather.rain["member_values"] = member_values
         if prob is not None:
             if prob >= 0.6:
                 weather.summary = f"Rain likely ({prob:.0%} probability, {ev.value:.1f} mm expected)."

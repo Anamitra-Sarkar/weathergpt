@@ -14,7 +14,8 @@ def decode_open_meteo(payload: Dict[str, Any], lat: float, lon: float) -> List[C
     # hourly
     hourly = payload.get("hourly") or {}
     times = hourly.get("time") or []
-    precip = hourly.get("precipitation") or hourly.get("precipitation_probability") or []
+    precip = hourly.get("precipitation") or []
+    precip_probability = hourly.get("precipitation_probability") or []
     temp = hourly.get("temperature_2m") or []
     wind = hourly.get("wind_speed_10m") or []
     issued = None
@@ -39,6 +40,14 @@ def decode_open_meteo(payload: Dict[str, Any], lat: float, lon: float) -> List[C
                 geometry=geom, spatial_resolution="0.25°", issued_at=issued,
                 valid_from=valid, valid_to=valid, accumulation_window_hours=1,
                 provenance=Provenance(original_source="OPEN_METEO", original_unit="mm", transformations=["fetched Open-Meteo", "hourly precipitation"]))
+            )
+        if i < len(precip_probability) and precip_probability[i] is not None:
+            probability = float(precip_probability[i]) / 100.0
+            out.append(CanonicalEvidenceObject(
+                source="OPEN_METEO", evidence_class="forecast", variable="precipitation_probability",
+                value=probability, probability=probability, unit="probability", statistic="probability",
+                geometry=geom, spatial_resolution="0.25°", issued_at=issued, valid_from=valid, valid_to=valid,
+                provenance=Provenance(original_source="OPEN_METEO", original_unit="%", transformations=["fetched Open-Meteo", "hourly precipitation probability"]))
             )
         if i < len(temp) and temp[i] is not None:
             out.append(CanonicalEvidenceObject(

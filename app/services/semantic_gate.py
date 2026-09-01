@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import List
 from app.schemas.ceo import CanonicalEvidenceObject
-from app.services.variable_registry import are_comparable
+from app.services.variable_registry import are_comparable, validate_semantics
 
 def filter_comparable(evs: List[CanonicalEvidenceObject], target_variable: str, target_statistic: str = None, target_window: float = None):
     """Keep only CEOs whose semantics allow comparison to target."""
@@ -18,3 +18,16 @@ def filter_comparable(evs: List[CanonicalEvidenceObject], target_variable: str, 
             else:
                 e.extra["semantic_gate_reject"] = why
     return out
+
+
+def validated_evidence(evs: List[CanonicalEvidenceObject]) -> tuple[List[CanonicalEvidenceObject], List[str]]:
+    accepted: List[CanonicalEvidenceObject] = []
+    rejected: List[str] = []
+    for evidence in evs:
+        ok, reason = validate_semantics(evidence.variable.value, evidence.statistic.value, evidence.unit,
+                                        evidence.evidence_class.value, evidence.accumulation_window_hours)
+        if ok:
+            accepted.append(evidence)
+        else:
+            rejected.append(f"{evidence.evidence_id}: {reason}")
+    return accepted, rejected

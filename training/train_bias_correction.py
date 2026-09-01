@@ -1,6 +1,6 @@
 """
 Bias-Correction / Downscaler — GFS coarse → IMD AWS truth.
-MLP (PyTorch, T4-ready) or LightGBM. Synthetic data by default, real CSV if present.
+MLP (PyTorch, T4-ready) or LightGBM. Reportable runs require real matched pairs.
 Usage:
   python training/train_bias_correction.py --dry-run
   python training/train_bias_correction.py --model mlp --epochs 20 --device auto
@@ -192,7 +192,8 @@ def train_mlp(X, y, args, cfg):
     with open(out/"config.json","w") as f:
         json.dump({"in_dim": X.shape[1], "out_dim": y.shape[1], "hidden": cfg.get("hidden_dim",64), "layers": cfg.get("num_layers",3)}, f, indent=2)
     with open(out/"metrics.json","w") as f:
-        json.dump({"best_val_loss": best, "rmse_t": rmse_t, "rmse_p": rmse_p, "brier": brier}, f, indent=2)
+        json.dump({"best_val_loss": best, "rmse_t": rmse_t, "rmse_p": rmse_p, "brier": brier,
+                   "dataset_kind": "real_matched_pairs", "split": "chronological_tail"}, f, indent=2)
     print(f"[bias-mlp] saved to {out}")
 
 def train_lgbm(X, y, args, cfg):
@@ -219,6 +220,7 @@ if __name__ == "__main__":
     ap.add_argument("--device", choices=["auto","cuda","cpu"], default="auto")
     ap.add_argument("--amp", action="store_true", default=True)
     ap.add_argument("--no-amp", dest="amp", action="store_false")
+    ap.add_argument("--allow-synthetic-development", action="store_true", help="development only; metrics are not reportable")
     args = ap.parse_args()
     cfg = yaml.safe_load(Path(args.config).read_text()) if Path(args.config).exists() else {}
     if args.model is None:
@@ -233,9 +235,11 @@ if __name__ == "__main__":
     else:
         data = load_real()
         if data is None:
+            if not args.allow_synthetic_development:
+                raise SystemExit("No real matched_pairs.csv found. Refusing a reportable synthetic bias-correction run; pass --allow-synthetic-development only for local plumbing tests.")
             n = int(cfg.get("num_synth_samples", 10000))
             X, y = synth_data(n)
-            print(f"[bias] using synthetic n={n}")
+            print(f"[bias] DEVELOPMENT ONLY synthetic n={n}; do not report its metrics")
         else:
             X, y = data
         if args.model == "mlp":

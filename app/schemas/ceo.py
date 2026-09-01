@@ -19,6 +19,7 @@ class EvidenceSource(str, Enum):
     CAP = "CAP"
     OPEN_METEO = "OPEN_METEO"
     GEFS = "GEFS"
+    NASA_POWER = "NASA_POWER"
     OTHER = "OTHER"
 
 class EvidenceClass(str, Enum):
@@ -30,6 +31,8 @@ class EvidenceClass(str, Enum):
     satellite = "satellite"
     climate = "climate"
     advisory = "advisory"
+    reanalysis = "reanalysis"
+    climatology = "climatology"
 
 class CanonicalVariable(str, Enum):
     precipitation_amount = "precipitation_amount"
@@ -47,6 +50,12 @@ class CanonicalVariable(str, Enum):
     thunderstorm_probability = "thunderstorm_probability"
     rainfall_distribution = "rainfall_distribution"
     heavy_rain_warning = "heavy_rain_warning"
+    thunderstorm_warning = "thunderstorm_warning"
+    cyclone_warning = "cyclone_warning"
+    heat_warning = "heat_warning"
+    flood_warning = "flood_warning"
+    marine_warning = "marine_warning"
+    visibility = "visibility"
     other = "other"
 
 class Statistic(str, Enum):
@@ -81,6 +90,7 @@ class CanonicalEvidenceObject(BaseModel):
     model_config = {"protected_namespaces": ()}
     evidence_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     source: EvidenceSource
+    source_type: Optional[str] = Field(default=None, description="e.g. api, gridded, reanalysis")
     source_record_id: Optional[str] = None
     evidence_class: EvidenceClass
     variable: CanonicalVariable
@@ -93,6 +103,7 @@ class CanonicalEvidenceObject(BaseModel):
     observed_at: Optional[datetime] = None
     issued_at: Optional[datetime] = None
     model_initialization_time: Optional[datetime] = None
+    forecast_reference_time: Optional[datetime] = Field(default=None, description="alias for model_initialization_time")
     valid_from: Optional[datetime] = None
     valid_to: Optional[datetime] = None
     forecast_lead_hours: Optional[float] = None
@@ -103,8 +114,14 @@ class CanonicalEvidenceObject(BaseModel):
     ensemble_member: Optional[int] = None
     probability: Optional[float] = Field(default=None, ge=0, le=1)
     quality_flag: Optional[str] = None
+    quality: Optional[str] = Field(default=None, description="alias for quality_flag")
     confidence: Optional[str] = None
     warning_severity: Optional[str] = None  # green/yellow/orange/red
     ingested_at: datetime = Field(default_factory=datetime.utcnow)
+    retrieval_timestamp: Optional[datetime] = Field(default=None, description="when retrieved from source")
     provenance: Provenance
+    parent_ids: List[str] = Field(default_factory=list, description="parent evidence IDs if derived")
+    transformation: Optional[str] = Field(default=None, description="transformation performed")
+    transformation_timestamp: Optional[datetime] = None
+    algorithm_version: Optional[str] = None
     extra: Dict[str, Any] = Field(default_factory=dict)

@@ -95,15 +95,8 @@ def load_external_csv(path: str):
 
 def run_dry():
     rows = make_dataset(2)
-    # simulate train: just show metrics without HF
     print(f"[dry-run] synthetic rows: {len(rows)} labels: {LABEL_MAP}")
-    # fake metrics
-    metrics = {"accuracy": 1.0, "f1": 1.0, "note": "dry-run, no model trained"}
-    out = Path("training/models/semantic_classifier")
-    out.mkdir(parents=True, exist_ok=True)
-    with open(out / "metrics.json", "w") as f:
-        json.dump(metrics, f, indent=2)
-    print(f"[dry-run] wrote {out/'metrics.json'}")
+    print("[dry-run] no model artifact or metric is written")
     return
 
 def run_full(args):
@@ -128,8 +121,8 @@ def run_full(args):
     print(f"[semantic] device={device} cuda_count={torch.cuda.device_count()} model={model_name}")
 
     # data
-    rows = make_dataset(20)
-    # merge external if exists
+    rows = []
+    # A reportable classifier must be trained on a versioned external corpus.
     p = Path("training/datasets/field_names.csv")
     if p.exists():
         try:
@@ -138,6 +131,8 @@ def run_full(args):
             print(f"[semantic] loaded external {len(ext)} rows from {p}")
         except Exception as e:
             print(f"[semantic] external csv failed: {e}")
+    if not rows:
+        raise RuntimeError("No training/datasets/field_names.csv found; refusing synthetic semantic-classifier metrics.")
     print(f"[semantic] total rows {len(rows)}")
 
     # split with stratification: ensure each label in both splits

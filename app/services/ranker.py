@@ -15,6 +15,7 @@ AUTHORITY = {
     "ERA5": 0.5,
     "OPEN_METEO": 0.7,
     "GEFS": 0.72,
+    "NASA_POWER": 0.65,
     "OTHER": 0.5,
 }
 

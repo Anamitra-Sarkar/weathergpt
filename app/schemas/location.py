@@ -13,6 +13,10 @@ class ResolvedLocation(BaseModel):
     confidence: float = 0.8
     source: str = "nominatim_cache"
     candidates: List[dict] = []
+    normalized_name: Optional[str] = None
+    administrative_hierarchy: List[str] = []
+    resolution_method: str = "gazetteer"
+    ambiguity_status: str = "resolved"
 
 # Minimal in-memory gazetteer for demo/offline
 GAZETTEER = {

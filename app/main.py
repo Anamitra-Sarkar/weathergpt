@@ -1,188 +1,227 @@
-"""
-WeatherGPT FastAPI — interoperability + agentic retrieval layer.
- boots in mock mode without any API keys (WIO + RADE still work).
-"""
+"""WeatherGPT modular-monolith API.  Weather truth is assembled before language synthesis."""
 from __future__ import annotations
-import os
+
 import time
+import uuid
 from datetime import datetime, timezone
-from typing import Optional, List
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
+from typing import Any
 
-load_dotenv()
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.cors import CORSMiddleware
 
+from app.adapters.registry import health_all
+from app.agents.orchestrator import run_all_agents
+from app.config import settings
+from app.errors import WeatherGPTError
+from app.orchestrator.retrieval_planner import build_retrieval_plan
+from app.rade.v2 import decide
+from app.schemas.api import ContextRequest, DecisionRequest, FeedbackRequest, LocationInput, QueryRequestV1
+from app.schemas.location import ResolvedLocation
 from app.schemas.wio import QueryRequest, QueryResponse
-from app.schemas.ceo import CanonicalEvidenceObject
-from app.services.location_resolver import resolve_location
+from app.services.cache import weather_cache
+from app.services.disagreement import detect_disagreement
+from app.services.evidence_store import evidence_store
+from app.services.location_resolver import LocationAmbiguousError, LocationNotFoundError, extract_location, resolve_location
+from app.services.retrieval import retrieve
+from app.services.semantic_gate import validated_evidence
+from app.services.temporal_align import filter_by_window
 from app.services.time_parser import parse_time_window
 from app.services.wio_builder import build_wio
-from app.orchestrator.retrieval_planner import plan_retrieval
-from app.decoders.open_meteo import fetch_open_meteo, decode_open_meteo
-from app.decoders.imd_json import decode as decode_imd
-from app.rade.policy import select_policy, explain_policy
+from app.context.store import add_feedback, get_context, upsert_fact
 
-app = FastAPI(title="WeatherGPT", version="1.0.0", description="Meteorological interoperability — CEO → WIO → RADE → LLM explain")
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app = FastAPI(title="WeatherGPT", version="2.0.0", description="Evidence-backed weather intelligence")
+_started_at = time.monotonic()
+_metrics: dict[str, float] = {"requests": 0, "errors": 0, "wio_latency_ms_total": 0, "rade_latency_ms_total": 0}
 
-_start = time.time()
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.headers.get("content-length") and int(request.headers["content-length"]) > settings.request_max_bytes:
+            return JSONResponse(status_code=413, content={"error": {"code": "REQUEST_TOO_LARGE", "message": "Request exceeds configured size limit", "details": {}, "request_id": "unavailable"}})
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request.state.request_id = request_id
+        started = time.monotonic()
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        response.headers["X-Process-Time-Ms"] = str(round((time.monotonic() - started) * 1000, 1))
+        return response
+
+
+app.add_middleware(RequestIDMiddleware)
+if settings.cors_origins:
+    app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+
+def _error(request: Request, error: WeatherGPTError) -> JSONResponse:
+    _metrics["errors"] += 1
+    return JSONResponse(status_code=error.status_code, content={"error": {"code": error.code, "message": error.message, "details": error.details, "request_id": request.state.request_id}})
+
+
+@app.exception_handler(WeatherGPTError)
+async def weathergpt_error(request: Request, exc: WeatherGPTError):
+    return _error(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError):
+    return _error(request, WeatherGPTError("VALIDATION_ERROR", "Invalid request", {"errors": exc.errors()}, 422))
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    return _error(request, WeatherGPTError("INTERNAL_ERROR", "Internal server error", {}, 500))
+
+
+def _resolve_location(location: LocationInput | None, question: str) -> ResolvedLocation:
+    try:
+        if location and location.has_coordinates():
+            return ResolvedLocation(raw=location.raw or "coordinates", lat=location.latitude, lon=location.longitude,
+                                    confidence=1.0, source="request", normalized_name=location.raw, resolution_method="coordinates")
+        if location and location.raw:
+            return resolve_location(location.raw)
+        extracted = extract_location(question)
+        if extracted:
+            return extracted
+    except LocationAmbiguousError as exc:
+        raise WeatherGPTError("LOCATION_AMBIGUOUS", "More than one location matches the request", {"candidates": exc.candidates}, 409) from exc
+    except LocationNotFoundError as exc:
+        raise WeatherGPTError("LOCATION_NOT_FOUND", str(exc), {"raw": exc.raw}, 404) from exc
+    raise WeatherGPTError("LOCATION_REQUIRED", "Provide a city, pincode, or latitude/longitude; no location is stored or inferred.", {}, 422)
+
+
+async def _weather_request(req: QueryRequestV1, request_id: str) -> tuple[Any, list, dict[str, Any], list, Any]:
+    started = time.monotonic()
+    location = _resolve_location(req.location, req.question)
+    valid_from, valid_to, horizon, time_confidence = parse_time_window(req.question)
+    plan = build_retrieval_plan(req.question, horizon)
+    evidence, retrieval_status = await retrieve(plan, lat=location.lat, lon=location.lon, valid_from=valid_from, valid_to=valid_to)
+    evidence = filter_by_window(evidence, valid_from.astimezone(timezone.utc), valid_to.astimezone(timezone.utc))
+    evidence, semantic_rejections = validated_evidence(evidence)
+    evidence_store.add_many(evidence)
+    wio = build_wio(req.question, location.model_dump(), valid_from, valid_to, horizon, evidence, lang=req.language)
+    wio.query.intent = plan.decision_context or horizon
+    wio.query.resolved_location["time_resolution_confidence"] = time_confidence
+    wio.query.resolved_location["retrieval_plan"] = plan.model_dump()
+    wio.query.resolved_location["retrieval_status"] = retrieval_status
+    if semantic_rejections:
+        wio.agreement.notes = (wio.agreement.notes + " ").strip() + "Some incompatible evidence was rejected."
+    profile = dict(req.profile)
+    if req.user_id:
+        profile.update({key: value["value"] for key, value in get_context(req.user_id).items() if key not in profile})
+    agents = await run_all_agents(evidence, wio, profile, req.language)
+    reviewer = next(result for result in agents if result.agent_name == "reviewer")
+    if reviewer.status != "success":
+        raise WeatherGPTError("REVIEW_FAILED", "Evidence-grounding review failed", {"errors": reviewer.errors}, 503)
+    _metrics["wio_latency_ms_total"] += (time.monotonic() - started) * 1000
+    return wio, evidence, retrieval_status, agents, profile
+
+
+def _synthesize(wio, decision=None) -> str:
+    parts: list[str] = []
+    if wio.weather.summary:
+        parts.append(wio.weather.summary)
+    else:
+        parts.append("No compatible weather evidence was available for the requested time window.")
+    if wio.official_warning.active:
+        parts.append(f"Official {wio.official_warning.severity} warning: {wio.official_warning.event}.")
+    if decision:
+        parts.append(f"Recommendation: {decision.recommended_action}. {decision.rationale}")
+    parts.append(f"Confidence context: {wio.agreement.status}. Evidence IDs: {', '.join(e.evidence_id for e in wio.evidence) or 'none'}.")
+    return " ".join(parts)
+
 
 @app.get("/")
-def root():
-    return {"message": "WeatherGPT API — see /docs", "mock_mode": not bool(os.getenv("GROQ_API_KEY"))}
+async def root():
+    return {"service": "WeatherGPT", "version": app.version, "openapi": "/openapi.json"}
+
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "uptime_s": int(time.time()-_start), "version": "1.0.0", "mock_mode": not bool(os.getenv("GROQ_API_KEY")), "timestamp": datetime.now(timezone.utc).isoformat()}
+@app.get("/api/v1/health")
+async def health():
+    sources = await health_all()
+    return {"status": "ok", "liveness": True, "readiness": any(s.get("available") for s in sources.values()),
+            "uptime_s": int(time.monotonic() - _started_at), "sources": sources,
+            "database": {"available": True, "driver": "sqlite"}, "cache": weather_cache.status(),
+            "llm": {"configured": bool(__import__("os").environ.get("GROQ_API_KEY")), "checked": False},
+            "models": {"runtime_loading": "rule-based fallback only; artifacts are not trusted until registry validation"}}
 
-@app.get("/plan")
-def plan(q: str = "Will it rain in Nagpur tomorrow afternoon?", location: str = "Nagpur"):
-    from app.services.time_parser import parse_time_window
-    from app.services.location_resolver import resolve_location
-    loc = resolve_location(location)
-    vf, vt, hor = parse_time_window(q)
-    classes = plan_retrieval(hor, q)
-    return {"location": loc.model_dump(), "valid_from": vf.isoformat(), "valid_to": vt.isoformat(), "horizon": hor, "evidence_classes": classes}
 
-async def _collect_ceos(question: str, loc, valid_from, valid_to, horizon: str) -> List[CanonicalEvidenceObject]:
-    ceos: List[CanonicalEvidenceObject] = []
+@app.post("/wio/query")
+@app.post("/api/v1/wio/query")
+async def wio_query_v1(req: QueryRequestV1, request: Request):
+    _metrics["requests"] += 1
+    wio, evidence, retrieval_status, agents, _ = await _weather_request(req, request.state.request_id)
+    return {"wio": wio, "evidence_count": len(evidence), "retrieval": retrieval_status, "agents": agents, "request_id": request.state.request_id}
 
-    # 1) Open-Meteo (always available, no key) — primary NWP source in demo
-    try:
-        payload = await fetch_open_meteo(loc.lat, loc.lon, forecast_days=5)
-        ceos.extend(decode_open_meteo(payload, loc.lat, loc.lon))
-    except Exception as e:
-        print(f"[weathergpt] open-meteo fetch failed: {e}")
 
-    # 2) IMD fixture (if you later wire real IMD, replace this block with real fetch)
-    # For now we inject a synthetic warning when horizon=short to demo warning preservation
-    # Remove once real IMD warnings are wired.
-    try:
-        # demo warning CEOS — only to show that warnings stay separate
-        # comment out if you don't want synthetic warnings
-        pass
-    except Exception:
-        pass
+@app.post("/query")
+@app.post("/api/v1/query")
+async def query_v1(req: QueryRequestV1, request: Request):
+    _metrics["requests"] += 1
+    wio, evidence, retrieval_status, agents, profile = await _weather_request(req, request.state.request_id)
+    decision = None
+    plan = build_retrieval_plan(req.question, wio.query.intent or "short")
+    if plan.decision_context:
+        decision = decide(wio, profile, req.question)
+    return {"answer": _synthesize(wio, decision), "wio": wio, "decision": decision, "agents": agents,
+            "retrieval": retrieval_status, "request_id": request.state.request_id}
 
-    # 3) Optional: decode any IMD fixtures in training/datasets/imd_samples.jsonl if present
-    try:
-        from pathlib import Path
-        p = Path("training/datasets/imd_samples.jsonl")
-        if p.exists():
-            import json
-            for line in p.read_text().splitlines():
-                if not line.strip():
-                    continue
-                rec = json.loads(line)
-                ceos.extend(decode_imd(rec, product=rec.get("_product","forecast")))
-    except Exception as e:
-        print(f"[weathergpt] imd fixtures skipped: {e}")
 
-    return ceos
-
-def _filter_ceos_to_window(ceos, valid_from, valid_to):
-    from app.services.temporal_align import filter_by_window, to_utc
-    q_from = valid_from.astimezone(timezone.utc)
-    q_to = valid_to.astimezone(timezone.utc)
-    return filter_by_window(ceos, q_from, q_to)
-
-@app.post("/wio/query", response_model=QueryResponse)
-async def wio_query(req: QueryRequest):
-    q = req.question
-    raw_loc = (req.location or {}).get("raw") or (req.location or {}).get("district") or "Nagpur"
-    if "lat" in (req.location or {}) and "lon" in (req.location or {}):
-        from app.schemas.location import ResolvedLocation
-        loc = ResolvedLocation(raw=raw_loc, lat=float(req.location["lat"]), lon=float(req.location["lon"]))
-    else:
-        loc = resolve_location(raw_loc)
-    valid_from, valid_to, horizon = parse_time_window(q)
-    if req.horizon_hint:
-        horizon = req.horizon_hint
-
-    ceos = await _collect_ceos(q, loc, valid_from, valid_to, horizon)
-    ceos_window = _filter_ceos_to_window(ceos, valid_from, valid_to)
-    # if filtering left nothing, fall back to all (so demo always returns something)
-    if not ceos_window and ceos:
-        ceos_window = ceos[:20]
-
-    # optional bias-correction hook: if model artifact exists, apply
-    try:
-        from pathlib import Path
-        if (Path("training/models/bias_correction/best.pt")).exists():
-            # lightweight: no heavy load in request path, just demo hook
-            pass
-    except Exception:
-        pass
-
-    wio = build_wio(q, loc.model_dump(), valid_from, valid_to, horizon, ceos_window, lang=req.lang)
-    return QueryResponse(answer=None, wio=wio, evidence_count=len(ceos_window), warnings=[wio.official_warning] if wio.official_warning.active else [], lang=req.lang)
-
-@app.post("/query", response_model=QueryResponse)
-async def query(req: QueryRequest):
-    # first build WIO
-    resp = await wio_query(req)
-    wio = resp.wio
-
-    # RADE advice
-    try:
-        best, scores, scenarios = select_policy(wio)
-        rade_note = explain_policy(best, scores, scenarios, wio)
-    except Exception as e:
-        best, rade_note = "wait", f"RADE unavailable: {e}"
-
-    # LLM explainer — only gets WIO + RADE, never raw CEOS/GRIB
-    # Uses 4 user-approved Groq models, queued round-robin; orchestrator = qwen/qwen3.8-27b, no llama
-    lang = req.lang or "en"
-    # try to load Groq key from env or file
-    groq_key = os.getenv("GROQ_API_KEY") or ""
-    if not groq_key:
-        for _p in ["/home/anamitra/Downloads/API_Keys_and_Secrets/groq_api.txt", "/home/anamitra/groq_api.txt"]:
-            try:
-                groq_key = open(_p).read().strip()
-                if groq_key:
-                    os.environ["GROQ_API_KEY"] = groq_key
-                    break
-            except: pass
-    if groq_key or os.getenv("GROQ_API_KEY"):
-        try:
-            from app.orchestrator.groq_client import generate as groq_generate
-            from app.orchestrator.models import ORCHESTRATOR_MODEL
-            # orchestrator builds the final explanation prompt from WIO + RADE
-            wio_json = wio.model_dump(mode="json")
-            prompt = (
-                f"You are WeatherGPT orchestrator ({ORCHESTRATOR_MODEL}). Explain the WIO for a user in {lang}.\n"
-                f"Rules: use ONLY WIO numbers, preserve warnings separately, never average incompatible values, state uncertainty.\n"
-                f"WIO: {str(wio_json)[:8000]}\nRADE: {rade_note} best={best}\n"
-                f"Respond in {lang}, concise, with provenance line."
-            )
-            answer = await groq_generate(
-                [{"role":"system","content": f"You are WeatherGPT, orchestrator model {ORCHESTRATOR_MODEL}. Be concise, provenance-aware, no llama."},
-                 {"role":"user","content": prompt}],
-                role="explainer_agent", temperature=0.35, max_tokens=800
-            )
-            answer = answer.strip() or f"[WeatherGPT] {wio.weather.summary} RADE: {rade_note}"
-        except Exception as e:
-            answer = f"[WeatherGPT] {wio.weather.summary or 'Forecast ready.'} RADE: {rade_note} (Groq fallback: {e})"
-    else:
-        # mock explainer — deterministic, shows WIO was the source
-        parts = [wio.weather.summary or "Weather intelligence ready."]
-        if wio.official_warning.active:
-            parts.append(f"⚠️ Official {wio.official_warning.authority} warning {wio.official_warning.severity} until {wio.official_warning.valid_until}.")
-        parts.append(f"Advice: {best} — {rade_note}")
-        if wio.agreement.notes:
-            parts.append(f"Agreement: {wio.agreement.status} — {wio.agreement.notes}")
-        parts.append(f"Evidence: {len(wio.evidence)} sources; horizon={wio.query.intent}. No LLM key — mock explanation (set GROQ_API_KEY for LLM).")
-        answer = " ".join(parts)
-
-    resp.answer = answer
-    return resp
-
+@app.post("/decision")
 @app.post("/rade/advise")
-async def rade_advise(req: QueryRequest):
-    resp = await wio_query(req)
-    wio = resp.wio
-    best, scores, scenarios = select_policy(wio)
-    note = explain_policy(best, scores, scenarios, wio)
-    return {"wio": wio, "best_action": best, "scores": scores, "scenarios": scenarios, "explanation": note}
+@app.post("/api/v1/decision")
+async def decision_endpoint(req: DecisionRequest, request: Request):
+    _metrics["requests"] += 1
+    started = time.monotonic()
+    wio, evidence, retrieval_status, agents, profile = await _weather_request(req, request.state.request_id)
+    result = decide(wio, profile, req.decision_type or req.question)
+    result.evidence_ids = [item.evidence_id for item in evidence]
+    _metrics["rade_latency_ms_total"] += (time.monotonic() - started) * 1000
+    return {"decision": result, "wio": wio, "agents": agents, "retrieval": retrieval_status, "request_id": request.state.request_id}
+
+
+@app.get("/evidence/{evidence_id}")
+async def get_evidence(evidence_id: str):
+    evidence = evidence_store.get(evidence_id)
+    if evidence is None:
+        raise HTTPException(404, detail={"code": "EVIDENCE_NOT_FOUND", "message": "Evidence is absent or expired from this process"})
+    return evidence
+
+
+@app.post("/context")
+@app.post("/api/v1/context")
+async def post_context(req: ContextRequest):
+    upsert_fact(req.user_id, req.fact.fact, req.fact.value, req.fact.confidence, req.fact.source, req.fact.confirmed,
+                req.fact.expiry.isoformat() if req.fact.expiry else None)
+    return {"status": "ok", "user_id": req.user_id, "fact": req.fact.fact}
+
+
+@app.post("/feedback")
+@app.post("/api/v1/feedback")
+async def post_feedback(req: FeedbackRequest):
+    add_feedback(req.user_id, req.decision_id or "unspecified", "stored with decision", str(req.actual_outcome), req.user_feedback or "")
+    return {"status": "recorded"}
+
+
+@app.get("/warnings/active")
+async def active_warnings(location: str, question: str = "warnings today"):
+    response = await _weather_request(QueryRequestV1(question=question, location=LocationInput(raw=location)), "warnings")
+    wio, _, retrieval, _, _ = response
+    return {"warnings": [wio.official_warning] if wio.official_warning.active else [], "retrieval": retrieval}
+
+
+@app.get("/forecast")
+async def forecast(location: str, question: str = "weather today"):
+    wio, evidence, retrieval, _, _ = await _weather_request(QueryRequestV1(question=question, location=LocationInput(raw=location)), "forecast")
+    return {"wio": wio, "retrieval": retrieval, "evidence_count": len(evidence)}
+
+
+@app.get("/metrics")
+async def metrics():
+    requests = _metrics["requests"] or 1
+    return {**_metrics, "wio_latency_ms_mean": _metrics["wio_latency_ms_total"] / requests,
+            "rade_latency_ms_mean": _metrics["rade_latency_ms_total"] / requests, "cache": weather_cache.status()}

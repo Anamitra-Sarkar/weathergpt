@@ -58,11 +58,7 @@ def run_dry():
     print("[intent dry-run] rule parser smoke")
     for txt,_ in UTTERANCES[:2]:
         print(f"  {txt} -> {rule_parse(txt)}")
-    out = Path("training/models/intent_parser")
-    out.mkdir(parents=True, exist_ok=True)
-    with open(out/"metrics.json","w") as f:
-        json.dump({"accuracy": 1.0, "note":"dry-run rule-based"}, f, indent=2)
-    print(f"[intent dry-run] wrote {out/'metrics.json'}")
+    print("[intent dry-run] no model artifact or metric is written")
 
 def run_full(args):
     import torch
@@ -85,7 +81,7 @@ def run_full(args):
 
     # build classification dataset: label = decision class with rebalance + dedup
     label_map = {"none":0, "pesticide_spraying":1, "marine":2, "irrigation":3, "harvest":4}
-    rows = synth_jsonl(600)
+    rows = []
     # allow external jsonl (the Kaggle-built 1200)
     p = Path("training/datasets/intent_samples.jsonl")
     candidates = [p, Path("/kaggle/working/training/datasets/intent_samples.jsonl"), Path("/kaggle/working/weathergpt/training/datasets/intent_samples.jsonl")]
@@ -130,6 +126,8 @@ def run_full(args):
         rows=balanced
         print(f"[intent] after rebalance {Counter((r['intent'].get('decision') or 'none') for r in rows)} total {len(rows)}")
         random.shuffle(rows)
+    if not rows:
+        raise RuntimeError("No versioned intent_samples.jsonl found; refusing synthetic training metrics.")
 
     texts = [r["text"] for r in rows]
     labels = [label_map.get((r["intent"].get("decision") or "none"),0) for r in rows]
