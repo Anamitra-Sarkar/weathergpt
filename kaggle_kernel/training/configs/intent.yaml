@@ -1,0 +1,10 @@
+model_name: distilbert-base-uncased
+max_length: 128
+epochs: 3
+batch_size: 32
+lr: 2e-5
+output_dir: training/models/intent_parser
+seed: 42
+amp: true
+# slot labels: location, variable, time, decision
+labels: ["O", "B-LOC", "I-LOC", "B-VAR", "I-VAR", "B-TIME", "I-TIME", "B-DEC", "I-DEC"]

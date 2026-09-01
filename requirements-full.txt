@@ -1,0 +1,20 @@
+# Full scientific decoder stack — install only if you need GRIB2/NetCDF/HDF5 locally
+# Kaggle T4 image already has most of these; use `pip install -r requirements-full.txt` on top of requirements.txt
+
+-r requirements.txt
+
+# GRIB2 (needs eccodes binary)
+cfgrib==0.9.10.4
+eccodes==1.7.0
+
+# NetCDF / HDF5
+netCDF4==1.6.5
+h5py==3.11.0
+xarray==2024.6.0
+pyproj==3.6.1
+
+# MQTT (WIS2)
+paho-mqtt==2.2.1
+
+# Optional extras for local vision (not needed for training)
+pillow==10.4.0

@@ -1,0 +1,11 @@
+# Kaggle T4 — on top of requirements.txt, ensures CUDA torch + fast extras
+# Run in notebook: !pip install -q -r requirements-kaggle.txt
+
+-r requirements.txt
+
+# Kaggle already has torch CUDA; this pins compatible accelerate bits
+# Keep eccodes optional here — installed via apt if available
+xarray==2024.6.0
+netCDF4==1.6.5
+h5py==3.11.0
+cfgrib==0.9.10.4

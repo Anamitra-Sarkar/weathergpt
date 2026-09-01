@@ -1,0 +1,29 @@
+# Minimal — boots backend + trains all 3 models on CPU or Kaggle T4
+# Full scientific stack (GRIB2/NetCDF/HDF5/eccodes) in requirements-full.txt
+
+fastapi==0.110.2
+uvicorn[standard]==0.29.0
+pydantic==2.7.4
+python-multipart==0.0.9
+httpx==0.27.2
+python-dotenv==1.0.1
+
+# ML — CPU torch by default; Kaggle notebook upgrades to cuda build automatically
+torch==2.3.1
+transformers==4.42.4
+datasets==2.20.0
+tokenizers==0.19.1
+scikit-learn==1.5.1
+pandas==2.2.2
+numpy==1.26.4
+tqdm==4.66.4
+pyyaml==6.0.1
+accelerate==0.31.0
+
+# Geospatial + units (light — no eccodes here)
+shapely==2.0.4
+pint==0.24.3
+
+# Utils
+tenacity==8.5.0
+orjson==3.10.7

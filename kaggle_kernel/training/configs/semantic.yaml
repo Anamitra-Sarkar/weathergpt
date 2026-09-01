@@ -1,0 +1,10 @@
+model_name: distilbert-base-uncased
+num_labels: 9  # precipitation_amount, precipitation_probability, precipitation_rate, temperature_2m, temperature_max, temperature_min, wind_speed, wind_gust, heavy_rain_warning
+max_length: 64
+epochs: 5
+batch_size: 32
+lr: 2e-5
+weight_decay: 0.01
+output_dir: training/models/semantic_classifier
+seed: 42
+amp: true

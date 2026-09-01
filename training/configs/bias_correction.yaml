@@ -1,0 +1,12 @@
+model: mlp  # mlp | lgbm
+epochs: 20
+batch_size: 256
+lr: 1e-3
+hidden_dim: 64
+num_layers: 3
+dropout: 0.1
+output_dir: training/models/bias_correction
+seed: 42
+amp: true
+# data
+num_synth_samples: 10000
