@@ -16,7 +16,7 @@ print("="*70)
 print("WeatherGPT OFFICIAL — BEST EVER — T4 x2")
 import torch
 print(" torch", torch.__version__, "cuda", torch.cuda.is_available())
-use_device="cuda" if torch.cuda.is_available() else "cpu"
+use_device="cpu"  # forced CPU per user (P100 sm_60 incompatible, use CPU)
 try:
     if torch.cuda.is_available():
         cap=torch.cuda.get_device_capability(0)
@@ -325,7 +325,7 @@ print("\n>>> M1 DistilBERT 9-label (best) <<<")
 m1_ok=False
 try:
     import pandas as pd, numpy as np
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, EarlyStoppingCallback
     from datasets import Dataset
     from sklearn.metrics import accuracy_score, f1_score
     import torch
@@ -365,8 +365,8 @@ try:
             loss_fct=torch.nn.CrossEntropyLoss(weight=cw.to(logits.device))
             loss=loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
             return (loss, outputs) if return_outputs else loss
-    args=TrainingArguments(output_dir="training/models/semantic_classifier", num_train_epochs=8, per_device_train_batch_size=32, per_device_eval_batch_size=64, learning_rate=2e-5, eval_strategy="epoch", save_strategy="epoch", load_best_model_at_end=True, logging_steps=20, seed=42, fp16=(use_device=="cuda"), use_cpu=force_cpu, report_to="none", save_total_limit=2)
-    trainer=WTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds, processing_class=tok, compute_metrics=lambda p: {"accuracy":accuracy_score(p.label_ids, np.argmax(p.predictions,axis=1)), "f1":f1_score(p.label_ids, np.argmax(p.predictions,axis=1), average="weighted")})
+    args=TrainingArguments(output_dir="training/models/semantic_classifier", num_train_epochs=8, per_device_train_batch_size=32, per_device_eval_batch_size=64, learning_rate=2e-5, weight_decay=0.05, eval_strategy="epoch", save_strategy="epoch", load_best_model_at_end=True, logging_steps=20, seed=42, fp16=False, use_cpu=True, report_to="none", save_total_limit=2, metric_for_best_model="eval_f1", greater_is_better=True)
+    trainer=WTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds, processing_class=tok, compute_metrics=lambda p: {"accuracy":accuracy_score(p.label_ids, np.argmax(p.predictions,axis=1)), "f1":f1_score(p.label_ids, np.argmax(p.predictions,axis=1), average="weighted")}, callbacks=[EarlyStoppingCallback(early_stopping_patience=2)])
     trainer.train()
     metrics=trainer.evaluate()
     print(f" M1 DistilBERT {metrics}")
@@ -411,7 +411,7 @@ try:
             super().__init__()
             self.net=nn.Sequential(nn.Linear(5,128),nn.ReLU(),nn.Dropout(0.15),nn.Linear(128,128),nn.ReLU(),nn.Dropout(0.15),nn.Linear(128,64),nn.ReLU(),nn.Dropout(0.1),nn.Linear(64,2))
         def forward(self,x): return self.net(x)
-    device=torch.device("cuda" if use_device=="cuda" else "cpu")
+    device=torch.device("cpu")  # forced CPU
     # DataParallel for T4 x2
     model=DeepMLP().to(device)
     if torch.cuda.device_count()>1:
@@ -468,7 +468,7 @@ print("\n>>> M3 DistilBERT 5-way (Groq-diverse 2000) <<<")
 m3_ok=False
 try:
     import json, torch, numpy as np
-    from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
+    from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments, EarlyStoppingCallback
     from datasets import Dataset
     from sklearn.metrics import accuracy_score, f1_score
     import pathlib as pl
@@ -502,8 +502,8 @@ try:
             loss_fct=torch.nn.CrossEntropyLoss(weight=cw.to(logits.device))
             loss=loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
             return (loss, outputs) if return_outputs else loss
-    args=TrainingArguments(output_dir="training/models/intent_parser", num_train_epochs=5, per_device_train_batch_size=32, per_device_eval_batch_size=64, learning_rate=2e-5, eval_strategy="epoch", save_strategy="epoch", load_best_model_at_end=True, logging_steps=20, seed=42, fp16=(use_device=="cuda"), use_cpu=force_cpu, report_to="none", save_total_limit=2)
-    trainer=WTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds, processing_class=tok, compute_metrics=lambda p: {"accuracy":accuracy_score(p.label_ids, np.argmax(p.predictions,axis=1)), "f1":f1_score(p.label_ids, np.argmax(p.predictions,axis=1), average="weighted")})
+    args=TrainingArguments(output_dir="training/models/intent_parser", num_train_epochs=5, per_device_train_batch_size=32, per_device_eval_batch_size=64, learning_rate=2e-5, weight_decay=0.05, eval_strategy="epoch", save_strategy="epoch", load_best_model_at_end=True, logging_steps=20, seed=42, fp16=False, use_cpu=True, report_to="none", save_total_limit=2, metric_for_best_model="eval_f1", greater_is_better=True)
+    trainer=WTrainer(model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds, processing_class=tok, compute_metrics=lambda p: {"accuracy":accuracy_score(p.label_ids, np.argmax(p.predictions,axis=1)), "f1":f1_score(p.label_ids, np.argmax(p.predictions,axis=1), average="weighted")}, callbacks=[EarlyStoppingCallback(early_stopping_patience=2)])
     trainer.train()
     metrics=trainer.evaluate()
     print(f" M3 DistilBERT {metrics}")
