@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import math
 import pickle
 from pathlib import Path
 
@@ -26,9 +25,11 @@ class _DistributionalHead:
         torch = self._torch
         raw = self.net(x)
         if self.family == "csgd":
+            # must match train_calibration.py exactly: the shift is the censoring
+            # point and is non-positive in the standard CSGD form
             return (torch.nn.functional.softplus(raw[:, 0]) + 0.05,
                     torch.nn.functional.softplus(raw[:, 1]) + 0.05,
-                    raw[:, 2].clamp(-25.0, 5.0))
+                    -torch.nn.functional.softplus(raw[:, 2]).clamp(max=25.0))
         return raw[:, 0], torch.nn.functional.softplus(raw[:, 1]) + 0.05
 
 
@@ -71,7 +72,6 @@ class ProbabilityCalibrator:
         isotonic_path = self.directory / "isotonics.pkl"
         self._isotonics = (pickle.loads(isotonic_path.read_bytes())
                            if isotonic_path.exists() else {})
-        self._grid = torch.linspace(0.0, 1.0, 161, device=device) ** 2 * 150.0
 
     def supports(self, variable: str) -> bool:
         return variable in self._heads
@@ -99,15 +99,10 @@ class ProbabilityCalibrator:
             parameters = head(tensor)
             if head.family == "csgd":
                 shape, scale, shift = parameters
-                gamma = torch.distributions.Gamma(shape.unsqueeze(-1), 1.0 / scale.unsqueeze(-1))
-                argument = (self._grid - shift.unsqueeze(-1)).clamp(min=1e-6)
-                density = torch.exp(gamma.log_prob(argument))
-                widths = torch.diff(self._grid, prepend=self._grid[:1])
-                cdf = torch.cumsum(density * widths, dim=-1).clamp(0.0, 1.0)
-                position = int(torch.searchsorted(
-                    self._grid, torch.tensor([threshold], device=self.device)
-                ).clamp(0, len(self._grid) - 1))
-                raw_probability = float(1.0 - cdf[0, position])
+                # exact: P(max(0, X + shift) > t) = 1 - P(X <= t - shift)
+                point = torch.full_like(shape, float(threshold))
+                cdf = torch.special.gammainc(shape, ((point - shift) / scale).clamp(min=0.0))
+                raw_probability = float(1.0 - cdf[0])
             else:
                 mu, sigma = parameters
                 normal = torch.distributions.Normal(mu, sigma)

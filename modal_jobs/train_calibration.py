@@ -84,32 +84,50 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
     print(f"[m4] cutoff={masks['cutoff']} held_out_locations={len(masks['held_out_locations'])}")
 
     SQRT_PI = math.sqrt(math.pi)
-    GRID = torch.linspace(0.0, 1.0, 161, device=device) ** 2 * 150.0
+    CRPS_SAMPLES = 96
 
     def gaussian_crps(mu, sigma, y):
+        """Closed-form CRPS of a Gaussian predictive distribution."""
         z = (y - mu) / sigma
         normal = torch.distributions.Normal(torch.zeros_like(z), torch.ones_like(z))
         return sigma * (z * (2 * normal.cdf(z) - 1)
                         + 2 * torch.exp(normal.log_prob(z)) - 1.0 / SQRT_PI)
 
-    def csgd_cdf(shape, scale, shift, grid):
-        """CDF of max(0, X + shift), X ~ Gamma(shape, scale), on `grid`.
+    def csgd_cdf(shape, scale, shift, t):
+        """Exact CDF of max(0, X + shift), X ~ Gamma(shape, scale).
 
-        torch's Gamma exposes no CDF and `torch.special.gammainc` has no
-        gradient with respect to its first argument, so the density is
-        integrated on the grid instead.  Differentiable and stable in float32.
+        P(Y <= t) = P(X <= t - shift), which is the regularised lower incomplete
+        gamma.  Used for evaluation and for exceedance probabilities, where no
+        gradient is needed -- `gammainc` has no derivative with respect to the
+        shape parameter, which is why the training loss below takes a different
+        route.
         """
-        gamma = torch.distributions.Gamma(shape.unsqueeze(-1), 1.0 / scale.unsqueeze(-1))
-        argument = (grid - shift.unsqueeze(-1)).clamp(min=1e-6)
-        density = torch.exp(gamma.log_prob(argument))
-        widths = torch.diff(grid, prepend=grid[:1])
-        return torch.cumsum(density * widths, dim=-1).clamp(0.0, 1.0), widths
+        return torch.special.gammainc(shape, ((t - shift) / scale).clamp(min=0.0))
 
-    def csgd_crps(shape, scale, shift, y):
-        """CRPS as the integrated Brier score of the predictive CDF."""
-        cdf, widths = csgd_cdf(shape, scale, shift, GRID)
-        indicator = (GRID >= y.unsqueeze(-1)).to(y.dtype)
-        return ((cdf - indicator) ** 2 * widths).sum(-1)
+    def csgd_crps(shape, scale, shift, y, samples: int = CRPS_SAMPLES):
+        """CRPS of the censored shifted gamma, from reparameterised samples.
+
+        Numerical quadrature of the predictive CDF was the obvious approach and
+        it is wrong here: a CSGD fitted to mostly-dry precipitation drifts to a
+        very small shape parameter, where the gamma density has an integrable
+        singularity at zero that no polynomial grid resolves -- a 161-point grid
+        recovered 8% of the mass at shape 0.05.  `torch.special.gammainc` is
+        exact but carries no gradient in the shape.
+
+        `Gamma.rsample` does have reparameterised gradients in both parameters,
+        so the CRPS is estimated from samples using the fair (unbiased) form of
+        the energy identity, evaluated through the sorted-sample expression
+        rather than an m-by-m pairwise matrix.
+        """
+        gamma = torch.distributions.Gamma(shape, 1.0 / scale)
+        draws = (gamma.rsample((samples,)).transpose(0, 1)
+                 + shift.unsqueeze(-1)).clamp(min=0.0)
+        ordered, _ = torch.sort(draws, dim=1)
+        first = (ordered - y.unsqueeze(-1)).abs().mean(1)
+        weights = (2 * torch.arange(1, samples + 1, device=y.device, dtype=y.dtype)
+                   - samples - 1)
+        second = (weights * ordered).sum(1) / (samples * (samples - 1))
+        return first - second
 
     def crps_ensemble(members: np.ndarray, observation: np.ndarray) -> np.ndarray:
         """Fair (unbiased) CRPS of a finite ensemble."""
@@ -135,9 +153,14 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         def forward(self, x):
             raw = self.net(x)
             if self.family == "csgd":
+                # The shift is the censoring point and is non-positive in the
+                # standard CSGD form.  Allowing it positive would push grid
+                # points below the shift into the clamped tail of a Gamma with
+                # shape < 1, where the density diverges and the integrated CDF
+                # saturates at 1 with no usable gradient.
                 return (F.softplus(raw[:, 0]) + 0.05,
                         F.softplus(raw[:, 1]) + 0.05,
-                        raw[:, 2].clamp(-25.0, 5.0))
+                        -F.softplus(raw[:, 2]).clamp(max=25.0))
             return raw[:, 0], F.softplus(raw[:, 1]) + 0.05
 
     results: dict = {}
@@ -226,10 +249,8 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
                 parameters = head(x_tensor[i:i + 32768])
                 if family == "csgd":
                     shape, scale, shift = parameters
-                    point = torch.tensor([threshold], device=device, dtype=torch.float32)
-                    cdf, _ = csgd_cdf(shape, scale, shift, GRID)
-                    position = int(torch.searchsorted(GRID, point).clamp(0, len(GRID) - 1))
-                    out.append((1.0 - cdf[:, position]).cpu().numpy())
+                    point = torch.full_like(shape, float(threshold))
+                    out.append((1.0 - csgd_cdf(shape, scale, shift, point)).cpu().numpy())
                 else:
                     mu, sigma = parameters
                     normal = torch.distributions.Normal(mu, sigma)

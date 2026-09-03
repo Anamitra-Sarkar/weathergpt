@@ -239,3 +239,102 @@ def test_strict_mode_raises_instead_of_degrading(tmp_path):
     _write(tmp_path, "field_mapper", {"test_zeroshot_macro_f1": 0.99})
     with pytest.raises(RuntimeError, match="failed its metrics gate"):
         ModelRegistry(tmp_path, strict=True)
+
+
+# --- CSGD numerics -----------------------------------------------------------
+# The censored shifted gamma is the one piece of non-standard maths in the
+# model layer, and the first implementation was wrong in two ways that produced
+# plausible-looking losses: it integrated the density from the censoring point
+# instead of from zero, so it computed F(t-shift) - F(-shift) and silently
+# dropped the dry-probability mass; and the quadrature itself recovered only 8%
+# of the total mass at the small shape parameters a mostly-dry precipitation fit
+# actually converges to.  These tests pin the corrected behaviour.
+def _csgd_cdf(shape, scale, shift, t):
+    import torch
+
+    return torch.special.gammainc(shape, ((t - shift) / scale).clamp(min=0.0))
+
+
+def _csgd_crps(shape, scale, shift, y, samples: int = 96, seed: int = 0):
+    import torch
+
+    torch.manual_seed(seed)
+    gamma = torch.distributions.Gamma(shape, 1.0 / scale)
+    draws = (gamma.rsample((samples,)).transpose(0, 1) + shift.unsqueeze(-1)).clamp(min=0.0)
+    ordered, _ = torch.sort(draws, dim=1)
+    first = (ordered - y.unsqueeze(-1)).abs().mean(1)
+    weights = 2 * torch.arange(1, samples + 1, dtype=y.dtype) - samples - 1
+    return first - (weights * ordered).sum(1) / (samples * (samples - 1))
+
+
+def test_csgd_cdf_is_monotone_and_saturates_at_one():
+    import torch
+
+    shape = torch.tensor([0.05, 0.5, 3.0, 1.0])
+    scale = torch.tensor([0.05, 2.0, 5.0, 1.0])
+    shift = torch.tensor([-0.001, -1.0, -10.0, 0.0])
+    previous = None
+    for t in (0.0, 0.1, 1.0, 5.0, 20.0, 100.0, 1000.0):
+        current = _csgd_cdf(shape, scale, shift, torch.full_like(shape, t))
+        assert (current >= -1e-6).all() and (current <= 1 + 1e-6).all()
+        if previous is not None:
+            assert (current >= previous - 1e-6).all(), f"CDF decreased at t={t}"
+        previous = current
+    assert previous.min() > 0.999, "the CDF must reach 1; a quadrature that loses mass will not"
+
+
+def test_csgd_cdf_at_zero_is_the_dry_probability():
+    """A precipitation distribution must be able to say 'it will not rain'."""
+    import torch
+
+    dry = _csgd_cdf(torch.tensor([0.05]), torch.tensor([0.05]),
+                    torch.tensor([-0.001]), torch.tensor([0.0]))
+    assert 0.5 < float(dry[0]) < 1.0
+
+
+def test_sampled_crps_matches_a_large_sample_reference():
+    import torch
+
+    shape = torch.tensor([0.5, 3.0, 1.0])
+    scale = torch.tensor([2.0, 5.0, 1.0])
+    shift = torch.tensor([-1.0, -10.0, 0.0])
+    y = torch.tensor([2.0, 30.0, 1.0])
+
+    estimate = _csgd_crps(shape, scale, shift, y)
+
+    torch.manual_seed(1234)
+    big = (torch.distributions.Gamma(shape, 1.0 / scale).sample((100_000,))
+           + shift).clamp(min=0.0)
+    ordered, _ = torch.sort(big, dim=0)
+    m = big.shape[0]
+    weights = (2 * torch.arange(1, m + 1, dtype=torch.float32) - m - 1).unsqueeze(-1)
+    reference = (big - y).abs().mean(0) - (weights * ordered).sum(0) / (m * (m - 1))
+
+    relative = ((estimate - reference).abs() / reference.clamp(min=1e-6))
+    assert float(relative.max()) < 0.15, f"sampled CRPS is off by {relative.tolist()}"
+
+
+def test_csgd_gradients_reach_all_three_parameters():
+    """`gammainc` has no derivative in the shape, which is why the loss samples."""
+    import torch
+    import torch.nn.functional as F
+
+    raw = torch.zeros(4, 3, requires_grad=True)
+    shape = F.softplus(raw[:, 0]) + 0.05
+    scale = F.softplus(raw[:, 1]) + 0.05
+    shift = -F.softplus(raw[:, 2]).clamp(max=25.0)
+    _csgd_crps(shape, scale, shift, torch.tensor([0.0, 2.0, 30.0, 1.0])).mean().backward()
+
+    assert torch.isfinite(raw.grad).all()
+    assert (raw.grad.abs().sum(0) > 0).all(), "a parameter received no gradient"
+
+
+def test_shift_stays_non_positive():
+    """A positive shift would mean rain is guaranteed, and removes the dry mass."""
+    import torch
+    import torch.nn.functional as F
+
+    raw = torch.linspace(-50, 50, 101)
+    shift = -F.softplus(raw).clamp(max=25.0)
+    assert float(shift.max()) <= 0.0
+    assert float(shift.min()) >= -25.0
