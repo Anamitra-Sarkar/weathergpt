@@ -99,7 +99,11 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
                 previous = word_id
                 if word_id < len(tags):
                     labels[i, position] = tag_index.get(tags[word_id], 0)
-        return batch, labels
+        # a plain dict, not the tokenizer's BatchEncoding: the per-language
+        # breakdown slices these tensors with a boolean mask, which BatchEncoding
+        # does not support
+        keep = ("input_ids", "attention_mask", "token_type_ids")
+        return {k: v for k, v in batch.items() if k in keep}, labels
 
     class JointParser(nn.Module):
         def __init__(self, backbone):
@@ -237,7 +241,8 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
         if mask.sum() < 25:
             continue
         splits["test"] = original[mask].reset_index(drop=True)
-        cached["test"] = (original_cache[0][mask], original_cache[1][mask])
+        cached["test"] = ({k: v[mask] for k, v in original_cache[0].items()},
+                          original_cache[1][mask])
         per_language[language] = evaluate("test")
     splits["test"], cached["test"] = original, original_cache
 

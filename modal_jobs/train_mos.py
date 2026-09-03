@@ -35,6 +35,14 @@ ALGORITHM_VERSION = "m2_mos_v1"
 QUANTILES = (0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95)
 TARGETS = ("temperature_2m", "precipitation", "wind_speed_10m")
 
+# Precipitation is fitted in cube-root space.  Hourly Indian rainfall is a spike
+# at zero with a long monsoon tail, and pinball loss on raw millimetres spends
+# its capacity on the tail.  This is exact rather than approximate: quantiles
+# commute with a monotone transform, so cubing the predicted quantiles recovers
+# the quantiles of the original distribution with no Jensen correction.  Every
+# metric and every baseline below is computed in millimetres.
+TARGET_TRANSFORM = {"precipitation": "cbrt"}
+
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
               timeout=60 * 150, memory=32768)
@@ -99,6 +107,14 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         loss = np.maximum(levels[None, :] * error, (levels[None, :] - 1) * error)
         return 2 * loss.mean(1)
 
+    def forward_transform(variable: str, values):
+        return np.cbrt(values) if TARGET_TRANSFORM.get(variable) == "cbrt" else values
+
+    def inverse_transform(variable: str, values):
+        if TARGET_TRANSFORM.get(variable) != "cbrt":
+            return values
+        return np.sign(values) * np.abs(values) ** 3
+
     levels = np.array(QUANTILES)
     results: dict = {}
     artifacts: dict = {}
@@ -120,7 +136,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         std[std < 1e-6] = 1.0
 
         Xtr = torch.tensor((X[train_mask] - mean) / std, dtype=torch.float32)
-        ytr = torch.tensor(y[train_mask], dtype=torch.float32)
+        ytr = torch.tensor(forward_transform(target, y[train_mask]), dtype=torch.float32)
         Xva = torch.tensor((X[val_mask] - mean) / std, dtype=torch.float32, device=device)
         yva_np = y[val_mask]
         Xte = torch.tensor((X[test_mask] - mean) / std, dtype=torch.float32, device=device)
@@ -152,7 +168,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
             with torch.no_grad():
                 val_predictions = torch.cat([net(Xva[i:i + 65536])
                                              for i in range(0, len(Xva), 65536)]).cpu().numpy()
-            val_crps = float(crps_from_quantiles(val_predictions, yva_np, levels).mean())
+            val_crps = float(crps_from_quantiles(
+                inverse_transform(target, val_predictions), yva_np, levels).mean())
             if val_crps < best_val:
                 best_val, best_state = val_crps, {k: v.detach().cpu().clone()
                                                   for k, v in net.state_dict().items()}
@@ -163,10 +180,14 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         net.eval()
 
         with torch.no_grad():
-            val_predictions = torch.cat([net(Xva[i:i + 65536])
-                                         for i in range(0, len(Xva), 65536)]).cpu().numpy()
-            test_predictions = torch.cat([net(Xte[i:i + 65536])
-                                          for i in range(0, len(Xte), 65536)]).cpu().numpy()
+            val_predictions = inverse_transform(target, torch.cat(
+                [net(Xva[i:i + 65536]) for i in range(0, len(Xva), 65536)]).cpu().numpy())
+            test_predictions = inverse_transform(target, torch.cat(
+                [net(Xte[i:i + 65536]) for i in range(0, len(Xte), 65536)]).cpu().numpy())
+        # cubing preserves order, but re-sort anyway so a downstream consumer can
+        # rely on monotone quantiles without re-checking
+        val_predictions = np.sort(val_predictions, axis=1)
+        test_predictions = np.sort(test_predictions, axis=1)
 
         # --- split conformal calibration on the validation slice -------------
         median_index = list(QUANTILES).index(0.5)
@@ -253,9 +274,11 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                 {"objective": "quantile", "alpha": level, "learning_rate": 0.08,
                  "num_leaves": 96, "min_data_in_leaf": 200, "feature_fraction": 0.85,
                  "bagging_fraction": 0.8, "bagging_freq": 1, "verbose": -1, "seed": seed},
-                lgb.Dataset(X[train_index], label=y[train_index]), num_boost_round=350)
-            gbm_val[:, position] = booster.predict(X[val_mask])
-            gbm_test[:, position] = booster.predict(X[test_mask])
+                lgb.Dataset(X[train_index],
+                            label=forward_transform(target, y[train_index])),
+                num_boost_round=350)
+            gbm_val[:, position] = inverse_transform(target, booster.predict(X[val_mask]))
+            gbm_test[:, position] = inverse_transform(target, booster.predict(X[test_mask]))
             gbm_models[level] = booster
         # a quantile crossing here would be an artifact of fitting each level
         # independently, so re-sort rather than emit a 90th below a 10th
@@ -287,6 +310,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         served = min((("quantile_net", test_scores), ("lightgbm", gbm_scores),
                       ("blend", blend_scores)), key=lambda item: item[1]["crps_model"])
         results[target] = {
+            "target_transform": TARGET_TRANSFORM.get(target, "identity"),
             "val": val_scores, "test_spatial_holdout": test_scores,
             "lightgbm_test": gbm_scores, "blend_test": blend_scores,
             "served_head": served[0],
@@ -316,7 +340,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                          "conformal_q": artifacts[target]["conformal_q"],
                          "in_dim": artifacts[target]["in_dim"],
                          "blend_weight": artifacts[target]["blend_weight"],
-                         "served_head": artifacts[target]["served_head"]}
+                         "served_head": artifacts[target]["served_head"],
+                         "target_transform": TARGET_TRANSFORM.get(target, "identity")}
                 for target in TARGETS}, f"{out_dir}/quantile_nets.pt")
     for target in TARGETS:
         for level, booster in artifacts[target]["gbm"].items():
@@ -333,6 +358,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         "split_cutoff": masks["cutoff"],
         "held_out_locations": masks["held_out_locations"],
         "quantiles": list(QUANTILES), "epochs": epochs, "lr": lr, "seed": seed,
+        "target_transforms": dict(TARGET_TRANSFORM),
         "models_in_ensemble": list(MODELS),
         "contracts": report.summary(),
         "trained_at": datetime.utcnow().isoformat() + "Z",

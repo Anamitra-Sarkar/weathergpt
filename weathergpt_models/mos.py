@@ -60,7 +60,7 @@ class MOSCorrector:
                              weights_only=False)
         self.variables = list(payload.keys())
         self._nets, self._scalers, self._blend, self._served = {}, {}, {}, {}
-        self._boosters = {}
+        self._transform, self._boosters = {}, {}
         for variable, block in payload.items():
             net = _QuantileNet(torch, block["in_dim"], len(self.QUANTILES))
             state = block["state_dict"]
@@ -75,6 +75,7 @@ class MOSCorrector:
                                        float(block["conformal_q"]))
             self._blend[variable] = float(block.get("blend_weight", 1.0))
             self._served[variable] = block.get("served_head", "quantile_net")
+            self._transform[variable] = block.get("target_transform", "identity")
 
         # The gradient-boosted head is only loaded when it is actually part of
         # what won on the spatial holdout, so a pure-network deployment does not
@@ -122,14 +123,21 @@ class MOSCorrector:
         with torch.no_grad():
             net_prediction = self._nets[variable](tensor).cpu().numpy()[0]
 
+        def inverse(values):
+            # precipitation is fitted in cube-root space; quantiles commute with
+            # a monotone transform, so cubing recovers the millimetre quantiles
+            if self._transform.get(variable) != "cbrt":
+                return values
+            return np.sign(values) * np.abs(values) ** 3
+
         head = self._served[variable]
         if head == "quantile_net" or variable not in self._boosters:
-            predicted = net_prediction
+            predicted = inverse(net_prediction)
         else:
-            gbm = np.array([self._boosters[variable][level].predict(X)[0]
-                            for level in self.QUANTILES])
+            gbm = inverse(np.array([self._boosters[variable][level].predict(X)[0]
+                                    for level in self.QUANTILES]))
             weight = self._blend[variable] if head == "blend" else 0.0
-            predicted = weight * net_prediction + (1 - weight) * gbm
+            predicted = weight * inverse(net_prediction) + (1 - weight) * gbm
         # independently fitted quantiles can cross; re-sorting is what the
         # training-time evaluation did, so serving must do the same
         predicted = np.sort(predicted)

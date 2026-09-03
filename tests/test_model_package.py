@@ -338,3 +338,24 @@ def test_shift_stays_non_positive():
     shift = -F.softplus(raw).clamp(max=25.0)
     assert float(shift.max()) <= 0.0
     assert float(shift.min()) >= -25.0
+
+
+def test_cube_root_transform_preserves_quantiles():
+    """Why M2 can fit precipitation in cube-root space and cube the answer.
+
+    Quantiles are equivariant under a monotone transform, so no Jensen
+    correction is needed on the way back — unlike a mean, which would be biased.
+    """
+    rng = np.random.default_rng(0)
+    draws = np.abs(rng.gamma(0.4, 6.0, size=200_000))
+    levels = np.array([0.05, 0.25, 0.5, 0.75, 0.95])
+
+    direct = np.quantile(draws, levels)
+    via_transform = np.quantile(np.cbrt(draws), levels) ** 3
+
+    assert np.allclose(direct, via_transform, rtol=1e-9), (
+        "cubing the quantiles of the cube root must reproduce the original quantiles")
+
+    # a mean does not survive the round trip, which is the reason this only
+    # works for a quantile model
+    assert not np.isclose(np.cbrt(draws).mean() ** 3, draws.mean(), rtol=0.05)
