@@ -185,7 +185,8 @@ def _build_base(locations: list, seed: int, per_template: int = 26) -> list:
 
 @app.function(image=DATA_IMAGE, volumes=VOLUMES, secrets=[GROQ_SECRET],
               timeout=60 * 90, max_containers=6)
-def expand_shard(rows: list, languages: list, shard_id: int) -> list:
+def expand_shard(rows: list, languages: list, shard_id: int,
+                 languages_per_row: int = 0, concurrency: int = 4) -> list:
     """Translate a shard of base rows into the assigned languages via Groq."""
     import httpx
 
@@ -195,7 +196,7 @@ def expand_shard(rows: list, languages: list, shard_id: int) -> list:
 
     async def run():
         out, rejected = [], {"http": 0, "json": 0, "slot_not_substring": 0, "span_align": 0}
-        semaphore = asyncio.Semaphore(4)
+        semaphore = asyncio.Semaphore(concurrency)
         async with httpx.AsyncClient(timeout=90) as client:
             async def one(row, language, model):
                 crop = row.get("crop_value")
@@ -260,9 +261,20 @@ def expand_shard(rows: list, languages: list, shard_id: int) -> list:
                             "time_value": str(payload.get("time")).strip(),
                             "crop_value": str(payload.get("crop")).strip() if crop else None})
 
+            # Sending every base row to every language is the obvious plan and
+            # it is both slower and less diverse: one API key cannot sustain
+            # thirteen calls per row without spending most of its time in 429
+            # backoff, and every language then sees the same sentences.  Sampling
+            # a few languages per row covers all of them across the corpus while
+            # pairing each with different content.
+            rng = random.Random(1000 + shard_id)
             tasks = []
             for index, row in enumerate(rows):
-                for offset, language in enumerate(languages):
+                if languages_per_row and languages_per_row < len(languages):
+                    chosen = rng.sample(languages, languages_per_row)
+                else:
+                    chosen = languages
+                for offset, language in enumerate(chosen):
                     model = GROQ_MODELS[(index + offset) % len(GROQ_MODELS)]
                     tasks.append(one(row, language, model))
             await asyncio.gather(*tasks)
@@ -356,7 +368,8 @@ def read_locations() -> str:
 
 @app.local_entrypoint()
 def main(n_shards: int = 8, seed: int = 42, per_template: int = 26,
-         merge_existing: bool = False):
+         merge_existing: bool = False, languages_per_row: int = 0,
+         concurrency: int = 4):
     meta = json.loads(read_locations.remote())
     base = _build_base(meta["locations"], seed, per_template)
     print(f"[d4] {len(base)} base English rows from {len(TEMPLATES)} templates")
@@ -366,7 +379,9 @@ def main(n_shards: int = 8, seed: int = 42, per_template: int = 26,
     # each shard covers every language, so a failing container loses coverage
     # evenly instead of wiping out one language entirely
     expanded: list = []
-    for chunk in expand_shard.starmap([(shard, languages, i) for i, shard in enumerate(shards)]):
+    for chunk in expand_shard.starmap(
+            [(shard, languages, i, languages_per_row, concurrency)
+             for i, shard in enumerate(shards)]):
         expanded += chunk
     print(f"[d4] {len(expanded)} multilingual rows survived slot verification")
     assemble.remote(expanded, base, seed, merge_existing)
