@@ -1,31 +1,25 @@
-"""Shared feature construction over the D1 multi-model corpus.
+"""D1-specific loading, feature extraction and splitting.
 
-One module, used by three trainers (M2 MOS, M4 calibration, M5 trust ranker), so
-the feature definition and — more importantly — the split rule exist in exactly
-one place.  A split defined twice is a split that will eventually disagree with
-itself and leak.
+The feature *definition* lives in `weathergpt_models.features` so training and
+inference cannot drift apart.  This module only knows how to get the arrays out
+of the training corpus and how to draw the split.
 
-What a row is: one (location, valid_time, lead_age) triple.  At that triple we
-hold four independent NWP models' forecasts, which together form a genuine
-four-member multi-model ensemble, plus the ERA5 truth that verifies them.
-
-On lead time: `lead_age_days` is the age of the model run the forecast came
-from (Open-Meteo's `previous_dayN`), so `lead_hours = 24 * N + hour_utc` is a
-real forecast lead, not a row index.  The contract in `contracts.py` asserts
-that mean error actually grows with it; if it ever stops growing, the column has
-silently stopped meaning what it says.
+On lead time: `lead_age_days` is the age of the model run a forecast came from
+(Open-Meteo's `previous_dayN`), so `lead_hours = 24 * N + hour_utc` is a real
+forecast lead, not a row index.  `contracts.check_lead_time_signal` asserts that
+mean error actually grows with it; if it stops growing, the column has silently
+stopped meaning what it says.
 """
 from __future__ import annotations
 
-MODELS = ("gfs_seamless", "ecmwf_ifs025", "icon_seamless", "gem_seamless")
-VARIABLES = ("temperature_2m", "precipitation", "wind_speed_10m", "relative_humidity_2m")
+from weathergpt_models.features import (  # re-exported for the trainers
+    CONTEXT_KEYS, ENSEMBLE_STATS, MODELS, VARIABLES, assemble_features,
+    ensemble_summary, feature_names,
+)
 
-# Ensemble summary statistics are the interface between training and serving.
-# The corpus gives four multi-model members; at request time the live GFS
-# ensemble gives thirty-one.  Because the model consumes *summary statistics*
-# and never the members themselves, the same post-processor applies to both —
-# and the model card records that as an explicit transfer assumption.
-ENSEMBLE_STATS = ("mean", "sd", "min", "max", "median", "spread_ratio", "wet_fraction")
+__all__ = ["MODELS", "VARIABLES", "ENSEMBLE_STATS", "CONTEXT_KEYS", "ensemble_summary",
+           "assemble_features", "feature_names", "load_d1", "dataset_sha256",
+           "build_features", "split_masks"]
 
 
 def load_d1(data_dir: str, *, columns: list | None = None):
@@ -46,30 +40,11 @@ def dataset_sha256(files: list) -> str:
     import hashlib
 
     digest = hashlib.sha256()
-    for path in files:
+    for path in sorted(files):
         with open(path, "rb") as handle:
             for block in iter(lambda: handle.read(1 << 20), b""):
                 digest.update(block)
     return digest.hexdigest()
-
-
-def ensemble_summary(values, *, wet_threshold: float | None = None):
-    """NaN-aware summary of a (n_rows, n_members) forecast matrix."""
-    import numpy as np
-
-    with np.errstate(invalid="ignore", all="ignore"):
-        live = np.isfinite(values)
-        mean = np.nanmean(values, axis=1)
-        sd = np.nanstd(values, axis=1)
-        minimum = np.nanmin(values, axis=1)
-        maximum = np.nanmax(values, axis=1)
-        median = np.nanmedian(values, axis=1)
-        spread_ratio = sd / (np.abs(mean) + 1.0)
-        if wet_threshold is None:
-            wet = np.zeros_like(mean)
-        else:
-            wet = (np.where(live, values, -np.inf) > wet_threshold).sum(1) / np.maximum(live.sum(1), 1)
-    return np.stack([mean, sd, minimum, maximum, median, spread_ratio, wet], axis=1)
 
 
 def build_features(frame, target_variable: str):
@@ -80,63 +55,39 @@ def build_features(frame, target_variable: str):
     """
     import numpy as np
 
-    wet_threshold = 0.1 if target_variable == "precipitation" else None
-    member_columns = [f"fc_{target_variable}_{model}" for model in MODELS]
-    members = frame[member_columns].to_numpy(dtype="float64")
-
-    blocks = [members]
-    names = list(member_columns)
-
-    blocks.append(ensemble_summary(members, wet_threshold=wet_threshold))
-    names += [f"ens_{stat}" for stat in ENSEMBLE_STATS]
-
-    # Cross-variable predictors: humidity and wind carry real information about
-    # a precipitation error, and a raw MOS that ignores them leaves skill behind.
-    for other in VARIABLES:
-        if other == target_variable:
-            continue
-        other_columns = [f"fc_{other}_{model}" for model in MODELS]
-        other_members = frame[other_columns].to_numpy(dtype="float64")
-        summary = ensemble_summary(other_members,
-                                   wet_threshold=0.1 if other == "precipitation" else None)
-        blocks.append(summary[:, [0, 1]])
-        names += [f"x_{other}_mean", f"x_{other}_sd"]
-
-    lead_hours = frame["lead_hours"].to_numpy(dtype="float64")
-    hour = frame["hour_utc"].to_numpy(dtype="float64")
-    doy = frame["doy"].to_numpy(dtype="float64")
-    context = np.stack([
-        lead_hours,
-        frame["lead_age_days"].to_numpy(dtype="float64"),
-        np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24),
-        np.sin(2 * np.pi * doy / 365.25), np.cos(2 * np.pi * doy / 365.25),
-        frame["elevation_m"].to_numpy(dtype="float64") / 1000.0,
-        frame["lat"].to_numpy(dtype="float64"),
-        frame["lon"].to_numpy(dtype="float64"),
-    ], axis=1)
-    blocks.append(context)
-    names += ["lead_hours", "lead_age_days", "sin_hour", "cos_hour", "sin_doy", "cos_doy",
-              "elevation_km", "lat", "lon"]
-
-    X = np.concatenate(blocks, axis=1)
+    members = frame[[f"fc_{target_variable}_{model}" for model in MODELS]].to_numpy(dtype="float64")
+    other_members = {
+        other: frame[[f"fc_{other}_{model}" for model in MODELS]].to_numpy(dtype="float64")
+        for other in VARIABLES if other != target_variable
+    }
+    context = {
+        "lead_hours": frame["lead_hours"].to_numpy(dtype="float64"),
+        "lead_age_days": frame["lead_age_days"].to_numpy(dtype="float64"),
+        "hour_utc": frame["hour_utc"].to_numpy(dtype="float64"),
+        "doy": frame["doy"].to_numpy(dtype="float64"),
+        "elevation_m": frame["elevation_m"].to_numpy(dtype="float64"),
+        "lat": frame["lat"].to_numpy(dtype="float64"),
+        "lon": frame["lon"].to_numpy(dtype="float64"),
+    }
+    X = assemble_features(target_variable, members, other_members, context)
     y = frame[f"truth_{target_variable}"].to_numpy(dtype="float64")
 
-    # A row is usable when the truth exists, the context is finite, and at least
-    # two of the four models actually produced a value — a one-member "ensemble"
-    # has no spread and would teach the calibrator nothing.
-    live_members = np.isfinite(members).sum(1)
-    keep = np.isfinite(y) & np.isfinite(context).all(1) & (live_members >= 2)
-    return X, y, names, members, keep
+    # A row is usable when the truth exists and at least two of the four models
+    # produced a value: a one-member "ensemble" has no spread and would teach a
+    # calibrator nothing about uncertainty.
+    live = np.isfinite(members).sum(1)
+    keep = np.isfinite(y) & (live >= 2)
+    return X, y, feature_names(target_variable), members, keep
 
 
 def split_masks(frame, *, seed: int = 42, time_quantile: float = 0.70,
                 spatial_fraction: float = 0.2):
     """Chronological AND spatial holdout.
 
-    `val` is future time at seen locations, so it measures ordinary forecast
+    `val` is future time at seen locations, which measures ordinary forecast
     degradation.  `test` is future time at locations never trained on, which is
     the only honest way to claim the model works for a district that was not in
-    the corpus — and that is exactly what a user asking about their village is.
+    the corpus -- and a user asking about their village is exactly that case.
     """
     import numpy as np
     import pandas as pd

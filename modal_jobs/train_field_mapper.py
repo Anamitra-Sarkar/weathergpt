@@ -29,14 +29,15 @@ from datetime import datetime
 from modal_jobs.common import (DATA_DIR, HF_CACHE_DIR, MODEL_DIR, TRAIN_IMAGE,
                                TRAIN_VOLUMES, app)
 
-BASE_MODEL = "intfloat/multilingual-e5-base"
+DEFAULT_BASE_MODEL = "intfloat/multilingual-e5-base"
 MAX_LEN = 64
 ALGORITHM_VERSION = "m1_field_mapper_v1"
 
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G", timeout=60 * 90)
-def train(epochs: int = 6, batch_size: int = 64, lr: float = 2e-5,
-          seed: int = 42, temperature: float = 0.05) -> dict:
+def train(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, batch_size: int = 64,
+          lr: float = 2e-5, seed: int = 42, temperature: float = 0.05,
+          variant: str = "") -> dict:
     import numpy as np
     import pandas as pd
     import torch
@@ -74,8 +75,8 @@ def train(epochs: int = 6, batch_size: int = 64, lr: float = 2e-5,
     test_df = frame[frame["split"] == "test_zeroshot"].reset_index(drop=True)
     print(f"[m1] train={len(train_df)} val={len(val_df)} zeroshot_test={len(test_df)}")
 
-    tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL, cache_dir=HF_CACHE_DIR)
-    encoder = AutoModel.from_pretrained(BASE_MODEL, cache_dir=HF_CACHE_DIR).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=HF_CACHE_DIR)
+    encoder = AutoModel.from_pretrained(base_model, cache_dir=HF_CACHE_DIR).to(device)
 
     def render(row: dict, *, train_mode: bool) -> str:
         """Serialise one field.  In training, unit and description are dropped at
@@ -310,18 +311,18 @@ def train(epochs: int = 6, batch_size: int = 64, lr: float = 2e-5,
             "mapped_accuracy": float((predicted[mapped] == gold[mapped]).mean()) if mapped.any() else None,
         }
 
-    out_dir = f"{MODEL_DIR}/{ALGORITHM_VERSION}"
+    out_dir = f"{MODEL_DIR}/{ALGORITHM_VERSION}{variant}"
     os.makedirs(out_dir, exist_ok=True)
-    torch.save({"state_dict": model.state_dict(), "base_model": BASE_MODEL}, f"{out_dir}/model.pt")
+    torch.save({"state_dict": model.state_dict(), "base_model": base_model}, f"{out_dir}/model.pt")
     tokenizer.save_pretrained(out_dir)
     with torch.no_grad():
         vectors = label_embeddings().cpu().numpy()
     np.save(f"{out_dir}/label_embeddings.npy", vectors)
 
     metrics = {
-        "algorithm_version": ALGORITHM_VERSION,
+        "algorithm_version": ALGORITHM_VERSION + variant,
         "model_kind": "label-embedding bi-encoder + multitask heads",
-        "base_model": BASE_MODEL,
+        "base_model": base_model,
         "dataset_kind": "d3_authoritative_parameter_tables",
         "dataset_path": data_path,
         "dataset_sha256": data_sha,
@@ -338,7 +339,7 @@ def train(epochs: int = 6, batch_size: int = 64, lr: float = 2e-5,
     with open(f"{out_dir}/metrics.json", "w") as handle:
         json.dump(metrics, handle, indent=2)
     with open(f"{out_dir}/config.json", "w") as handle:
-        json.dump({"base_model": BASE_MODEL, "max_len": MAX_LEN,
+        json.dump({"base_model": base_model, "max_len": MAX_LEN,
                    "abstention_threshold": best_threshold,
                    "canonical_variables": list(CANONICAL_VARIABLES),
                    "statistics": list(STATISTICS), "levels": list(VERTICAL_LEVELS),
@@ -351,5 +352,7 @@ def train(epochs: int = 6, batch_size: int = 64, lr: float = 2e-5,
 
 
 @app.local_entrypoint()
-def main(epochs: int = 6):
-    train.remote(epochs=epochs)
+def main(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, variant: str = "",
+         batch_size: int = 64, lr: float = 2e-5):
+    train.remote(base_model=base_model, epochs=epochs, variant=variant,
+                 batch_size=batch_size, lr=lr)

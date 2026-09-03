@@ -271,34 +271,47 @@ async def _fetch_d1_location(client, loc: dict, start: str, end: str) -> "object
     return out.drop(columns=["time"])
 
 
-@app.function(image=DATA_IMAGE, volumes=VOLUMES, timeout=60 * 90, max_containers=8, retries=1)
-def build_d1_shard(shard: list[dict], start: str, end: str, shard_id: int) -> dict:
+@app.function(image=DATA_IMAGE, volumes=VOLUMES, timeout=60 * 180, max_containers=8, retries=1)
+def build_d1_shard(shard: list, start: str, end: str, shard_id: int) -> dict:
+    """Fetch a shard of locations, committing after every one.
+
+    Per-location commits matter: a shard covers ~16 locations over more than an
+    hour, and an interrupted run that only wrote at the end would lose all of it.
+    A location whose file already exists is skipped, so a rerun resumes.
+    """
     import httpx
     import pandas as pd
 
+    from modal_jobs.common import DATA_VOL
+
+    path = f"{DATA_DIR}/d1_mos"
+    os.makedirs(path, exist_ok=True)
+
     async def run():
-        frames, failures = [], []
+        written, rows, failures, skipped = 0, 0, [], 0
         async with httpx.AsyncClient(timeout=120, limits=httpx.Limits(max_connections=2)) as client:
             for loc in shard:
+                target = f"{path}/loc_{loc['loc_id']}.parquet"
+                if os.path.exists(target):
+                    skipped += 1
+                    continue
                 try:
-                    frames.append(await _fetch_d1_location(client, loc, start, end))
-                    print(f"[d1:{shard_id}] ok {loc['query']}")
+                    table = await _fetch_d1_location(client, loc, start, end)
+                    table.to_parquet(target, index=False, compression="zstd")
+                    DATA_VOL.commit()
+                    written += 1
+                    rows += len(table)
+                    print(f"[d1:{shard_id}] ok {loc['query']} rows={len(table)} "
+                          f"({written}/{len(shard)})")
                 except Exception as exc:
                     failures.append({"loc": loc["query"], "error": str(exc)[:300]})
                     print(f"[d1:{shard_id}] FAIL {loc['query']}: {exc}")
                 await asyncio.sleep(0.5)
-        return frames, failures
+        return written, rows, failures, skipped
 
-    frames, failures = asyncio.run(run())
-    if not frames:
-        return {"shard": shard_id, "rows": 0, "failures": failures}
-    table = pd.concat(frames, ignore_index=True)
-    path = f"{DATA_DIR}/d1_mos"
-    os.makedirs(path, exist_ok=True)
-    table.to_parquet(f"{path}/shard_{shard_id:03d}.parquet", index=False, compression="zstd")
-    from modal_jobs.common import DATA_VOL
-    DATA_VOL.commit()
-    return {"shard": shard_id, "rows": int(len(table)), "locs": len(frames), "failures": failures}
+    written, rows, failures, skipped = asyncio.run(run())
+    return {"shard": shard_id, "rows": rows, "locs": written, "skipped": skipped,
+            "failures": failures}
 
 
 # --- D2: 31-member ensemble corpus ------------------------------------------

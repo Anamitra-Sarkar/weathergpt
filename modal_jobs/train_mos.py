@@ -113,17 +113,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         if min(train_mask.sum(), val_mask.sum(), test_mask.sum()) < 5000:
             raise RuntimeError(f"{target}: a split is too small to report on")
 
-        # NaN members are filled with the row's live-member mean, and a
-        # missingness indicator is appended so the model knows it was imputed.
-        row_mean = np.nanmean(members, axis=1)
-        filled = np.where(np.isfinite(X), X, np.nan)
-        for column in range(len(MODELS)):
-            filled[:, column] = np.where(np.isfinite(filled[:, column]),
-                                         filled[:, column], row_mean)
-        missing = (~np.isfinite(members)).astype("float64")
-        X = np.concatenate([np.nan_to_num(filled, nan=0.0), missing], axis=1)
-        names = names + [f"missing_{model}" for model in MODELS]
-
+        # imputation and the missingness indicators are inside assemble_features,
+        # so the matrix here is exactly what the served model will see
         mean = X[train_mask].mean(0)
         std = X[train_mask].std(0)
         std[std < 1e-6] = 1.0
