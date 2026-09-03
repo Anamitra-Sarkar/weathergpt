@@ -35,7 +35,7 @@ DATA_IMAGE = (
         "pydantic==2.10.3",
         "pyyaml==6.0.2",
     )
-    .add_local_python_source("modal_jobs", "app")
+    .add_local_python_source("modal_jobs", "app", "weathergpt_models")
 )
 
 # Training: torch + transformers + gradient boosting.  Pinned so a rerun in a
@@ -63,7 +63,7 @@ TRAIN_IMAGE = (
         "httpx==0.28.1",
     )
     .env({"HF_HOME": HF_CACHE_DIR, "TOKENIZERS_PARALLELISM": "false"})
-    .add_local_python_source("modal_jobs", "app")
+    .add_local_python_source("modal_jobs", "app", "weathergpt_models")
 )
 
 # GRIB2 decoding needs the ECMWF eccodes C library; only this image carries it.
@@ -78,7 +78,7 @@ GRIB_IMAGE = (
         "httpx==0.28.1",
         "fastapi[standard]==0.115.6",
     )
-    .add_local_python_source("modal_jobs", "app")
+    .add_local_python_source("modal_jobs", "app", "weathergpt_models")
 )
 
 app = modal.App(APP_NAME)
