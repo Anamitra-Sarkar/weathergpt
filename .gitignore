@@ -17,3 +17,7 @@ weathergpt_outputs/
 .DS_Store
 wandb/
 lightning_logs/
+
+# session scratch
+*.log
+weathergpt.db
