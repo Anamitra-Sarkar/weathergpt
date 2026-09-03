@@ -72,8 +72,14 @@ def train(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, batch_size: int
 
     train_df = frame[frame["split"] == "train"].reset_index(drop=True)
     val_df = frame[frame["split"] == "val"].reset_index(drop=True)
+    dev_df = frame[frame["split"] == "dev_zeroshot"].reset_index(drop=True)
     test_df = frame[frame["split"] == "test_zeroshot"].reset_index(drop=True)
-    print(f"[m1] train={len(train_df)} val={len(val_df)} zeroshot_test={len(test_df)}")
+    if len(dev_df) == 0:
+        # older corpus without the dev split; fall back and say so
+        dev_df = val_df
+        print("[m1] WARNING: no dev_zeroshot split in this corpus, calibrating on val")
+    print(f"[m1] train={len(train_df)} val={len(val_df)} dev_zeroshot={len(dev_df)} "
+          f"test_zeroshot={len(test_df)}")
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, cache_dir=HF_CACHE_DIR)
     encoder = AutoModel.from_pretrained(base_model, cache_dir=HF_CACHE_DIR).to(device)
@@ -252,18 +258,24 @@ def train(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, batch_size: int
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    # --- calibrate the abstention threshold on validation --------------------
-    val_metrics, val_sims, val_preds, val_gold = evaluate(val_df, "val")
+    # --- calibrate the abstention threshold on a HELD-OUT SCHEMA -------------
+    # Not on in-domain validation: the similarity distribution shifts when the
+    # schema changes, so a threshold tuned in-domain lands at the wrong
+    # operating point on an unseen one.  `dev_zeroshot` is unseen but is not the
+    # reported test set.
+    _, dev_sims, dev_preds, dev_gold = evaluate(dev_df, "dev")
     other_id = var_index["other"]
     best_threshold, best_score = 0.0, -1.0
-    for candidate in np.quantile(val_sims, np.linspace(0.0, 0.6, 61)):
-        adjusted = np.where(val_sims < candidate, other_id, val_preds)
-        score = f1_score(val_gold, adjusted, average="macro", zero_division=0)
+    for candidate in np.quantile(dev_sims, np.linspace(0.0, 0.7, 71)):
+        adjusted = np.where(dev_sims < candidate, other_id, dev_preds)
+        score = f1_score(dev_gold, adjusted, average="macro", zero_division=0)
         if score > best_score:
             best_score, best_threshold = float(score), float(candidate)
-    print(f"[m1] abstention threshold {best_threshold:.4f} (val macro-F1 {best_score:.4f})")
+    print(f"[m1] abstention threshold {best_threshold:.4f} "
+          f"(dev_zeroshot macro-F1 {best_score:.4f})")
 
     val_metrics, _, _, _ = evaluate(val_df, "val", threshold=best_threshold)
+    dev_metrics, _, _, _ = evaluate(dev_df, "dev_zeroshot", threshold=best_threshold)
     test_metrics, _, test_preds, test_gold = evaluate(test_df, "test_zeroshot",
                                                       threshold=best_threshold)
 
@@ -326,12 +338,17 @@ def train(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, batch_size: int
         "dataset_kind": "d3_authoritative_parameter_tables",
         "dataset_path": data_path,
         "dataset_sha256": data_sha,
-        "split": "by_source_table (train: CF+GRIB2+CAP, test: WRF/NCEP/BUFR/OpenMeteo/IMD)",
-        "n_train": int(len(train_df)), "n_val": int(len(val_df)), "n_test": int(len(test_df)),
+        "split": "by source table — train: CF+GRIB2+CAP; dev_zeroshot: BUFR+OpenMeteo+IMD "
+                 "(threshold calibration only); test_zeroshot: WRF+NCEP (never touched until "
+                 "the final measurement)",
+        "n_train": int(len(train_df)), "n_val": int(len(val_df)),
+        "n_dev_zeroshot": int(len(dev_df)), "n_test": int(len(test_df)),
         "epochs": epochs, "batch_size": batch_size, "lr": lr, "seed": seed,
         "abstention_threshold": best_threshold,
+        "abstention_threshold_calibrated_on": "dev_zeroshot (held-out schemas, "
+                                              "disjoint from the reported test set)",
         "trained_at": datetime.utcnow().isoformat() + "Z",
-        **val_metrics, **test_metrics,
+        **val_metrics, **dev_metrics, **test_metrics,
         "baselines": baselines,
         "zeroshot_by_source": by_source,
         "label_space": list(CANONICAL_VARIABLES),

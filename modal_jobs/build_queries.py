@@ -149,11 +149,11 @@ def _spans_to_bio(text: str, spans: list) -> list | None:
     return list(zip(tokens, tags))
 
 
-def _build_base(locations: list, seed: int) -> list:
+def _build_base(locations: list, seed: int, per_template: int = 26) -> list:
     rng = random.Random(seed)
     rows = []
     for family, template, intent, variables in TEMPLATES:
-        for _ in range(26):
+        for _ in range(per_template):
             location = rng.choice(locations)
             place = rng.choice([location["name"], location["query"],
                                 f"{location['name']} district",
@@ -273,18 +273,33 @@ def expand_shard(rows: list, languages: list, shard_id: int) -> list:
 
 
 @app.function(image=DATA_IMAGE, volumes=VOLUMES, timeout=60 * 20)
-def assemble(expanded: list, base: list, seed: int = 42) -> dict:
+def assemble(expanded: list, base: list, seed: int = 42,
+             merge_existing: bool = False) -> dict:
     import pandas as pd
 
     from modal_jobs.contracts import check_label_corpus
 
     rows = base + expanded
     frame = pd.DataFrame(rows)
-    frame["bio"] = [_spans_to_bio(row["text"], row["spans"]) for row in rows]
-    frame = frame[frame["bio"].notna()].reset_index(drop=True)
-    frame["tokens"] = frame["bio"].map(lambda pairs: [t for t, _ in pairs])
-    frame["tags"] = frame["bio"].map(lambda pairs: [g for _, g in pairs])
-    frame = frame.drop(columns=["bio", "spans"])
+
+    # A second pass with a different seed can grow the corpus without discarding
+    # the first: rows are merged and de-duplicated on the normalised text below.
+    existing_path = f"{DATA_DIR}/d4_queries.parquet"
+    if merge_existing and os.path.exists(existing_path):
+        previous = pd.read_parquet(existing_path)
+        keep = [column for column in frame.columns if column in previous.columns]
+        previous = previous[keep]
+        frame = pd.concat([previous, frame[keep]], ignore_index=True)
+        print(f"[d4] merged {len(previous):,} existing rows")
+    if "spans" in frame.columns:
+        pending = frame["spans"].notna()
+        bio = [_spans_to_bio(row["text"], row["spans"]) if row.get("spans") is not None else None
+               for row in frame.to_dict("records")]
+        frame["bio"] = bio
+        frame = frame[frame["bio"].notna()].reset_index(drop=True)
+        frame["tokens"] = frame["bio"].map(lambda pairs: [t for t, _ in pairs])
+        frame["tags"] = frame["bio"].map(lambda pairs: [g for _, g in pairs])
+        frame = frame.drop(columns=["bio", "spans"])
 
     frame["norm"] = frame["text"].str.strip().str.lower()
     before = len(frame)
@@ -340,9 +355,10 @@ def read_locations() -> str:
 
 
 @app.local_entrypoint()
-def main(n_shards: int = 8, seed: int = 42):
+def main(n_shards: int = 8, seed: int = 42, per_template: int = 26,
+         merge_existing: bool = False):
     meta = json.loads(read_locations.remote())
-    base = _build_base(meta["locations"], seed)
+    base = _build_base(meta["locations"], seed, per_template)
     print(f"[d4] {len(base)} base English rows from {len(TEMPLATES)} templates")
 
     languages = [code for code in LANGUAGES if code != "en"]
@@ -353,4 +369,4 @@ def main(n_shards: int = 8, seed: int = 42):
     for chunk in expand_shard.starmap([(shard, languages, i) for i, shard in enumerate(shards)]):
         expanded += chunk
     print(f"[d4] {len(expanded)} multilingual rows survived slot verification")
-    assemble.remote(expanded, base, seed)
+    assemble.remote(expanded, base, seed, merge_existing)

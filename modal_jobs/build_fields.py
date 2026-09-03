@@ -42,7 +42,14 @@ SACHET_RSS = "https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml"
 SACHET_CAP = "https://sachet.ndma.gov.in/cap_public_website/FetchXMLFile?identifier={identifier}"
 
 TRAIN_SOURCES = ("cf_standard_names", "grib2_eccodes", "cap_sachet")
-ZEROSHOT_SOURCES = ("wrf_registry", "ncep_gfs_idx", "bufr_wmo", "open_meteo", "imd_products")
+# Held-out schemas are split in two.  The abstention threshold has to be tuned
+# somewhere, and tuning it on in-domain validation and applying it zero-shot is
+# a mismatch: the similarity distribution shifts when the schema changes, so the
+# operating point lands in the wrong place.  `dev_zeroshot` is a *different*
+# unseen schema used only to pick that threshold; `test_zeroshot` is never
+# touched until the final measurement.
+DEV_ZEROSHOT_SOURCES = ("bufr_wmo", "open_meteo", "imd_products")
+ZEROSHOT_SOURCES = ("wrf_registry", "ncep_gfs_idx")
 
 # GRIB2 code table 4.5 — enough of it to place a level.
 GRIB_SURFACE = {
@@ -519,8 +526,14 @@ def build_d3() -> dict:
     frame = frame.drop_duplicates(subset=["source_table", "dedup_key"])
     frame = frame.sort_values(["source_table", "raw_field"]).reset_index(drop=True)
 
-    frame["split"] = frame["source_table"].map(
-        lambda table: "train" if table in TRAIN_SOURCES else "test_zeroshot")
+    def split_of(table: str) -> str:
+        if table in TRAIN_SOURCES:
+            return "train"
+        if table in DEV_ZEROSHOT_SOURCES:
+            return "dev_zeroshot"
+        return "test_zeroshot"
+
+    frame["split"] = frame["source_table"].map(split_of)
     # carve an in-domain validation slice deterministically out of the train sources
     train_mask = frame["split"] == "train"
     digest = frame.loc[train_mask, "dedup_key"].map(
