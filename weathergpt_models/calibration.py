@@ -19,28 +19,32 @@ class _DistributionalHead:
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
             nn.Linear(hidden, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
-            nn.Linear(hidden, 3 if family == "csgd" else 2))
+            nn.Linear(hidden, 4 if family == "csgd" else 2))
 
     def __call__(self, x):
         torch = self._torch
         raw = self.net(x)
         if self.family == "csgd":
-            # must match train_calibration.py exactly: the shift is the censoring
-            # point and is non-positive in the standard CSGD form
-            return (torch.nn.functional.softplus(raw[:, 0]) + 0.05,
+            # must match train_calibration.py exactly: (P(wet), gamma shape,
+            # gamma scale, censoring shift), the shift non-positive
+            return (torch.sigmoid(raw[:, 0]).clamp(1e-4, 1 - 1e-4),
                     torch.nn.functional.softplus(raw[:, 1]) + 0.05,
-                    -torch.nn.functional.softplus(raw[:, 2]).clamp(max=25.0))
+                    torch.nn.functional.softplus(raw[:, 2]) + 0.05,
+                    -torch.nn.functional.softplus(raw[:, 3]).clamp(max=25.0))
         return raw[:, 0], torch.nn.functional.softplus(raw[:, 1]) + 0.05
 
 
 class ProbabilityCalibrator:
     """Turns ensemble spread into a probability whose reliability was measured.
 
-    Precipitation uses a censored shifted gamma distribution — a point mass at
-    zero for the dry hours and a long right tail for monsoon bursts — fitted by
-    minimising CRPS, then refined per threshold by isotonic regression so the
-    reliability curve is monotone.  Temperature and wind use a Gaussian EMOS
-    head.
+    Precipitation uses a hurdle model: an explicit probability that the hour is
+    wet at all, times a censored shifted gamma for how much falls if it is.  The
+    two questions a rainfall forecast is really answering are separated, and the
+    predictive distribution gets a genuine atom at zero — without which a
+    continuous distribution loses to the raw ensemble on the dry hours, which
+    are most of them.  Fitted by minimising CRPS, then refined per threshold by
+    isotonic regression so the reliability curve is monotone.  Temperature and
+    wind use a Gaussian EMOS head.
 
     Reliability curves and Brier skill scores per threshold are in
     `metrics.json`, measured on locations the model never trained on.
@@ -98,17 +102,19 @@ class ProbabilityCalibrator:
         with torch.no_grad():
             parameters = head(tensor)
             if head.family == "csgd":
-                shape, scale, shift = parameters
-                # exact: P(max(0, X + shift) > t) = 1 - P(X <= t - shift)
+                p_wet, shape, scale, shift = parameters
+                # hurdle: F(t) = (1 - p) + p * P(max(0, X + shift) <= t)
                 point = torch.full_like(shape, float(threshold))
-                cdf = torch.special.gammainc(shape, ((point - shift) / scale).clamp(min=0.0))
+                wet_cdf = torch.special.gammainc(shape,
+                                                 ((point - shift) / scale).clamp(min=0.0))
+                cdf = (1 - p_wet) + p_wet * wet_cdf
                 raw_probability = float(1.0 - cdf[0])
             else:
                 mu, sigma = parameters
                 normal = torch.distributions.Normal(mu, sigma)
                 raw_probability = float(1.0 - normal.cdf(torch.full_like(mu, threshold))[0])
 
-        method = "csgd" if head.family == "csgd" else "gaussian"
+        method = "hurdle_csgd" if head.family == "csgd" else "gaussian"
         probability = raw_probability
         isotonic = self._isotonics.get(threshold) or self._isotonics.get(float(threshold))
         if isotonic is not None:

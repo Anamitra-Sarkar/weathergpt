@@ -105,8 +105,43 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         """
         return torch.special.gammainc(shape, ((t - shift) / scale).clamp(min=0.0))
 
+    def hurdle_crps(p_wet, shape, scale, shift, y, samples: int = CRPS_SAMPLES):
+        """CRPS of a hurdle distribution: zero with probability 1 - p, else CSGD.
+
+        Hourly rainfall is exactly zero most of the time, and a purely continuous
+        predictive distribution loses to the raw ensemble on those hours because
+        the ensemble can be exactly zero and the continuous one cannot.  A hurdle
+        separates the two questions the forecast is really answering -- will it
+        rain at all, and if so how much -- and gives the predictive distribution
+        a genuine atom at zero.
+
+        For F = (1-p) d_0 + p G, the energy form expands analytically in p:
+            E|X - y|   = (1-p)|y| + p E_G|X - y|
+            E|X - X'|  = 2p(1-p) E_G|X| + p^2 E_G|X - X'|
+        so p carries gradient directly and only the Gamma expectations need
+        sampling, through `rsample`.
+        """
+        gamma = torch.distributions.Gamma(shape, 1.0 / scale)
+        draws = (gamma.rsample((samples,)).transpose(0, 1)
+                 + shift.unsqueeze(-1)).clamp(min=0.0)
+        ordered, _ = torch.sort(draws, dim=1)
+
+        wet_abs_error = (ordered - y.unsqueeze(-1)).abs().mean(1)
+        wet_mean_abs = ordered.mean(1)
+        weights = (2 * torch.arange(1, samples + 1, device=y.device, dtype=y.dtype)
+                   - samples - 1)
+        wet_pair = 2 * (weights * ordered).sum(1) / (samples * (samples - 1))
+
+        first = (1 - p_wet) * y.abs() + p_wet * wet_abs_error
+        second = 2 * p_wet * (1 - p_wet) * wet_mean_abs + p_wet.pow(2) * wet_pair
+        return first - 0.5 * second
+
+    def hurdle_cdf(p_wet, shape, scale, shift, t):
+        """Exact CDF of the hurdle distribution."""
+        return (1 - p_wet) + p_wet * csgd_cdf(shape, scale, shift, t)
+
     def csgd_crps(shape, scale, shift, y, samples: int = CRPS_SAMPLES):
-        """CRPS of the censored shifted gamma, from reparameterised samples.
+        """CRPS of the censored shifted gamma alone, from reparameterised samples.
 
         Numerical quadrature of the predictive CDF was the obvious approach and
         it is wrong here: a CSGD fitted to mostly-dry precipitation drifts to a
@@ -148,20 +183,19 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             self.net = nn.Sequential(
                 nn.Linear(in_dim, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
                 nn.Linear(hidden, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
-                nn.Linear(hidden, 3 if family == "csgd" else 2),
+                nn.Linear(hidden, 4 if family == "csgd" else 2),
             )
 
         def forward(self, x):
             raw = self.net(x)
             if self.family == "csgd":
-                # The shift is the censoring point and is non-positive in the
-                # standard CSGD form.  Allowing it positive would push grid
-                # points below the shift into the clamped tail of a Gamma with
-                # shape < 1, where the density diverges and the integrated CDF
-                # saturates at 1 with no usable gradient.
-                return (F.softplus(raw[:, 0]) + 0.05,
+                # (probability of a wet hour, gamma shape, gamma scale, censoring
+                # shift).  The shift is non-positive, which is the standard CSGD
+                # form and keeps small shapes out of the divergent tail.
+                return (torch.sigmoid(raw[:, 0]).clamp(1e-4, 1 - 1e-4),
                         F.softplus(raw[:, 1]) + 0.05,
-                        -F.softplus(raw[:, 2]).clamp(max=25.0))
+                        F.softplus(raw[:, 2]) + 0.05,
+                        -F.softplus(raw[:, 3]).clamp(max=25.0))
             return raw[:, 0], F.softplus(raw[:, 1]) + 0.05
 
     results: dict = {}
@@ -192,7 +226,7 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
         def crps_of(output, target):
-            return (csgd_crps(*output, target) if family == "csgd"
+            return (hurdle_crps(*output, target) if family == "csgd"
                     else gaussian_crps(*output, target))
 
         n = len(ytr)
@@ -253,9 +287,10 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             for i in range(0, len(x_tensor), 32768):
                 parameters = head(x_tensor[i:i + 32768])
                 if family == "csgd":
-                    shape, scale, shift = parameters
+                    p_wet, shape, scale, shift = parameters
                     point = torch.full_like(shape, float(threshold))
-                    out.append((1.0 - csgd_cdf(shape, scale, shift, point)).cpu().numpy())
+                    out.append((1.0 - hurdle_cdf(p_wet, shape, scale, shift,
+                                                 point)).cpu().numpy())
                 else:
                     mu, sigma = parameters
                     normal = torch.distributions.Normal(mu, sigma)
@@ -366,8 +401,9 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
 
     metrics = {
         "algorithm_version": ALGORITHM_VERSION,
-        "model_kind": "CSGD (precipitation) + Gaussian EMOS (temperature, wind), CRPS-fitted, "
-                      "with isotonic-refined exceedance probabilities",
+        "model_kind": "hurdle CSGD (precipitation: P(wet) x censored shifted gamma) + "
+                      "Gaussian EMOS (temperature, wind), CRPS-fitted, with isotonic-refined "
+                      "exceedance probabilities",
         "dataset_kind": "d1_multi_model_nwp_vs_era5_seamless",
         "dataset_shards": len(files), "dataset_rows": int(len(frame)),
         "dataset_sha256": dataset_sha256(files),
