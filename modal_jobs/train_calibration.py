@@ -53,7 +53,8 @@ TARGETS = (("precipitation", "csgd"), ("temperature_2m", "gaussian"),
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
               timeout=60 * 150, memory=32768)
-def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int = 42) -> dict:
+def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int = 42,
+          patience: int = 8) -> dict:
     import numpy as np
     import torch
     import torch.nn as nn
@@ -195,7 +196,7 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
                     else gaussian_crps(*output, target))
 
         n = len(ytr)
-        best_val, best_state = float("inf"), None
+        best_val, best_state, best_epoch = float("inf"), None, -1
         for epoch in range(epochs):
             head.train()
             perm = torch.randperm(n)
@@ -219,11 +220,15 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
                           for i in range(0, len(Xva), 65536)]
             val_crps = sum(chunks) / len(yva_np)
             if val_crps < best_val:
-                best_val = val_crps
+                best_val, best_epoch = val_crps, epoch
                 best_state = {k: v.detach().cpu().clone() for k, v in head.state_dict().items()}
             if epoch % 5 == 0 or epoch == epochs - 1:
                 print(f"[m4:{variable}] epoch {epoch + 1}/{epochs} "
                       f"train_crps={total / n:.4f} val_crps={val_crps:.4f}")
+            if epoch - best_epoch >= patience:
+                print(f"[m4:{variable}] early stop at epoch {epoch + 1}; "
+                      f"best was epoch {best_epoch + 1} at val_crps={best_val:.4f}")
+                break
         head.load_state_dict(best_state)
         head.eval()
 
@@ -337,6 +342,7 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             scores["exceedance"] = exceedance_report
             artifacts["isotonics"] = isotonics
 
+        scores["best_epoch"] = best_epoch + 1
         results[variable] = scores
         artifacts[variable] = {"head": head, "mean": mean, "std": std, "family": family,
                                "in_dim": int(X.shape[1]), "feature_names": names}

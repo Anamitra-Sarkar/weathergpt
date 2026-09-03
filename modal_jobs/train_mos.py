@@ -47,7 +47,7 @@ TARGET_TRANSFORM = {"precipitation": "cbrt"}
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
               timeout=60 * 150, memory=32768)
 def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
-          seed: int = 42, max_gbm_rows: int = 1_200_000) -> dict:
+          seed: int = 42, max_gbm_rows: int = 1_200_000, patience: int = 6) -> dict:
     import numpy as np
     import pandas as pd
     import torch
@@ -148,7 +148,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
         n = len(ytr)
-        best_val, best_state = float("inf"), None
+        best_val, best_state, best_epoch = float("inf"), None, -1
         for epoch in range(epochs):
             net.train()
             perm = torch.randperm(n)
@@ -171,11 +171,18 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
             val_crps = float(crps_from_quantiles(
                 inverse_transform(target, val_predictions), yva_np, levels).mean())
             if val_crps < best_val:
-                best_val, best_state = val_crps, {k: v.detach().cpu().clone()
-                                                  for k, v in net.state_dict().items()}
+                best_val, best_epoch = val_crps, epoch
+                best_state = {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}
             if epoch % 5 == 0 or epoch == epochs - 1:
                 print(f"[m2:{target}] epoch {epoch + 1}/{epochs} "
                       f"train_pinball={total / n:.4f} val_crps={val_crps:.4f}")
+            # The validation window is a later time period, so some degradation is
+            # expected; a sustained rise is memorisation, and the extra epochs
+            # only cost compute because the best state is what gets served.
+            if epoch - best_epoch >= patience:
+                print(f"[m2:{target}] early stop at epoch {epoch + 1}; "
+                      f"best was epoch {best_epoch + 1} at val_crps={best_val:.4f}")
+                break
         net.load_state_dict(best_state)
         net.eval()
 
@@ -314,6 +321,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
             "val": val_scores, "test_spatial_holdout": test_scores,
             "lightgbm_test": gbm_scores, "blend_test": blend_scores,
             "served_head": served[0],
+            "best_epoch": best_epoch + 1,
             "interval_coverage_nominal": 0.80,
             "interval_coverage_val_raw": raw_coverage,
             "interval_coverage_test_raw": test_coverage_raw,
