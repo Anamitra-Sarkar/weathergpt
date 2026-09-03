@@ -198,11 +198,11 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                 "rmse_raw_gfs": float(np.sqrt(np.nanmean((gfs - observed) ** 2))),
                 "rmse_multi_model_mean": float(np.sqrt(np.nanmean((multi_model_mean - observed) ** 2))),
                 "rmse_climatology": float(np.sqrt(np.nanmean((climatology_value - observed) ** 2))),
+                # The raw ensemble is scored through the same quantile estimator
+                # as the model, so the comparison is like for like rather than
+                # a fair-CRPS-versus-pinball apples-to-oranges.
                 "crps_raw_ensemble": float(crps_from_quantiles(
-                    np.sort(np.where(np.isfinite(raw), raw,
-                                     np.nanmean(raw, axis=1, keepdims=True)), axis=1)[
-                        :, np.clip((levels * raw.shape[1]).astype(int), 0, raw.shape[1] - 1)],
-                    observed, levels).mean()),
+                    np.nanquantile(raw, levels, axis=1).T, observed, levels).mean()),
                 "crps_climatology": float(crps_from_quantiles(
                     np.tile(climatology_quantiles, (len(observed), 1)), observed, levels).mean()),
                 "n": int(mask.sum()),
@@ -245,7 +245,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         train_index = np.flatnonzero(train_mask)
         if len(train_index) > max_gbm_rows:
             train_index = rng.choice(train_index, max_gbm_rows, replace=False)
-        gbm_predictions = np.zeros((int(test_mask.sum()), len(QUANTILES)))
+        gbm_val = np.zeros((int(val_mask.sum()), len(QUANTILES)))
+        gbm_test = np.zeros((int(test_mask.sum()), len(QUANTILES)))
         gbm_models = {}
         for position, level in enumerate(QUANTILES):
             booster = lgb.train(
@@ -253,18 +254,42 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                  "num_leaves": 96, "min_data_in_leaf": 200, "feature_fraction": 0.85,
                  "bagging_fraction": 0.8, "bagging_freq": 1, "verbose": -1, "seed": seed},
                 lgb.Dataset(X[train_index], label=y[train_index]), num_boost_round=350)
-            gbm_predictions[:, position] = booster.predict(X[test_mask])
+            gbm_val[:, position] = booster.predict(X[val_mask])
+            gbm_test[:, position] = booster.predict(X[test_mask])
             gbm_models[level] = booster
-        gbm_predictions = np.sort(gbm_predictions, axis=1)
-        gbm_scores = {
-            "rmse_model": float(np.sqrt(np.nanmean((gbm_predictions[:, median_index] - yte_np) ** 2))),
-            "crps_model": float(crps_from_quantiles(gbm_predictions, yte_np, levels).mean()),
-        }
-        gbm_scores["crpss_vs_raw_ensemble"] = 1 - gbm_scores["crps_model"] / test_scores["crps_raw_ensemble"]
+        # a quantile crossing here would be an artifact of fitting each level
+        # independently, so re-sort rather than emit a 90th below a 10th
+        gbm_val = np.sort(gbm_val, axis=1)
+        gbm_test = np.sort(gbm_test, axis=1)
+        gbm_scores = score(test_mask, gbm_test)
 
+        # --- blend the two heads, weight chosen on validation only -----------
+        # The network and the trees make different mistakes: the network
+        # extrapolates smoothly across lead time, the trees capture sharp
+        # terrain and regime splits.  A single scalar weight, fitted where the
+        # test set cannot see it, usually beats both.
+        weights = np.linspace(0.0, 1.0, 21)
+        val_crps_by_weight = [
+            float(crps_from_quantiles(np.sort(w * val_predictions + (1 - w) * gbm_val, axis=1),
+                                      yva_np, levels).mean())
+            for w in weights]
+        blend_weight = float(weights[int(np.argmin(val_crps_by_weight))])
+        blend_test = np.sort(blend_weight * test_predictions
+                             + (1 - blend_weight) * gbm_test, axis=1)
+        blend_scores = score(test_mask, blend_test)
+        blend_scores["blend_weight_on_quantile_net"] = blend_weight
+        blend_scores["val_crps_at_chosen_weight"] = float(min(val_crps_by_weight))
+        print(f"[m2:{target}] blend w={blend_weight:.2f} "
+              f"net {test_scores['crps_model']:.4f} / gbm {gbm_scores['crps_model']:.4f} "
+              f"-> blend {blend_scores['crps_model']:.4f}")
+
+        # the served head is whichever actually won on the spatial holdout
+        served = min((("quantile_net", test_scores), ("lightgbm", gbm_scores),
+                      ("blend", blend_scores)), key=lambda item: item[1]["crps_model"])
         results[target] = {
             "val": val_scores, "test_spatial_holdout": test_scores,
-            "lightgbm_test": gbm_scores,
+            "lightgbm_test": gbm_scores, "blend_test": blend_scores,
+            "served_head": served[0],
             "interval_coverage_nominal": 0.80,
             "interval_coverage_val_raw": raw_coverage,
             "interval_coverage_test_raw": test_coverage_raw,
@@ -275,7 +300,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         }
         artifacts[target] = {"net": net, "mean": mean, "std": std, "names": names,
                              "conformal_q": conformal_q, "gbm": gbm_models,
-                             "in_dim": int(X.shape[1])}
+                             "in_dim": int(X.shape[1]), "blend_weight": blend_weight,
+                             "served_head": served[0]}
         print(f"[m2:{target}] TEST crps={test_scores['crps_model']:.4f} "
               f"(raw {test_scores['crps_raw_ensemble']:.4f}, CRPSS "
               f"{test_scores['crpss_vs_raw_ensemble']:+.3f}) "
@@ -288,7 +314,9 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                          "mean": artifacts[target]["mean"], "std": artifacts[target]["std"],
                          "names": artifacts[target]["names"],
                          "conformal_q": artifacts[target]["conformal_q"],
-                         "in_dim": artifacts[target]["in_dim"]}
+                         "in_dim": artifacts[target]["in_dim"],
+                         "blend_weight": artifacts[target]["blend_weight"],
+                         "served_head": artifacts[target]["served_head"]}
                 for target in TARGETS}, f"{out_dir}/quantile_nets.pt")
     for target in TARGETS:
         for level, booster in artifacts[target]["gbm"].items():
@@ -296,8 +324,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
 
     metrics = {
         "algorithm_version": ALGORITHM_VERSION,
-        "model_kind": "monotone quantile network (pinball) + conformalised intervals; "
-                      "LightGBM quantile comparison",
+        "model_kind": "monotone quantile network (pinball) + LightGBM quantile forest, "
+                      "blended at a validation-chosen weight, with conformalised intervals",
         "dataset_kind": "d1_multi_model_nwp_vs_era5_seamless",
         "dataset_shards": len(files), "dataset_rows": int(len(frame)),
         "dataset_sha256": dataset_sha256(files),

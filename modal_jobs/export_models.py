@@ -222,6 +222,32 @@ def export(repo_id: str, private: bool = False, dry_run: bool = False) -> dict:
             "uploaded": True, "url": url, "account": who.get("name")}
 
 
+@app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, timeout=60 * 20)
+def report(repo_id: str = "weathergpt/models") -> str:
+    """Return the generated model card without uploading anything."""
+    from pathlib import Path
+
+    from weathergpt_models.registry import GATES, REQUIRED_PROVENANCE
+
+    root = Path(MODEL_DIR)
+    bundle = {}
+    for name, gate in GATES.items():
+        metrics_path = root / gate.directory / "metrics.json"
+        if not metrics_path.exists():
+            continue
+        metrics = json.loads(metrics_path.read_text())
+        missing = [key for key in REQUIRED_PROVENANCE if not metrics.get(key)]
+        if missing:
+            ok, reason = False, f"missing provenance {missing}"
+        else:
+            try:
+                ok, reason = gate.passes(metrics)
+            except Exception as exc:
+                ok, reason = False, f"gate raised {exc}"
+        bundle[name] = {"metrics": metrics, "gate_ok": ok, "gate_reason": reason}
+    return _card(bundle, repo_id)
+
+
 @app.local_entrypoint()
 def main(repo_id: str = "", private: bool = False, dry_run: bool = False):
     if not repo_id and not dry_run:

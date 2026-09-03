@@ -59,7 +59,8 @@ class MOSCorrector:
         payload = torch.load(self.directory / "quantile_nets.pt", map_location="cpu",
                              weights_only=False)
         self.variables = list(payload.keys())
-        self._nets, self._scalers = {}, {}
+        self._nets, self._scalers, self._blend, self._served = {}, {}, {}, {}
+        self._boosters = {}
         for variable, block in payload.items():
             net = _QuantileNet(torch, block["in_dim"], len(self.QUANTILES))
             state = block["state_dict"]
@@ -72,6 +73,28 @@ class MOSCorrector:
             self._nets[variable] = net
             self._scalers[variable] = (np.asarray(block["mean"]), np.asarray(block["std"]),
                                        float(block["conformal_q"]))
+            self._blend[variable] = float(block.get("blend_weight", 1.0))
+            self._served[variable] = block.get("served_head", "quantile_net")
+
+        # The gradient-boosted head is only loaded when it is actually part of
+        # what won on the spatial holdout, so a pure-network deployment does not
+        # pay for lightgbm at all.
+        if any(head in ("lightgbm", "blend") for head in self._served.values()):
+            import lightgbm as lgb
+
+            for variable in self.variables:
+                if self._served[variable] == "quantile_net":
+                    continue
+                boosters = {}
+                for level in self.QUANTILES:
+                    path = self.directory / f"lgbm_{variable}_q{int(level * 100):02d}.txt"
+                    if path.exists():
+                        boosters[level] = lgb.Booster(model_file=str(path))
+                if len(boosters) == len(self.QUANTILES):
+                    self._boosters[variable] = boosters
+                else:
+                    # fall back rather than serve a partial quantile ladder
+                    self._served[variable] = "quantile_net"
 
     def supports(self, variable: str) -> bool:
         return variable in self._nets
@@ -97,7 +120,19 @@ class MOSCorrector:
         mean, std, conformal = self._scalers[variable]
         tensor = torch.tensor((X - mean) / std, dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            predicted = self._nets[variable](tensor).cpu().numpy()[0]
+            net_prediction = self._nets[variable](tensor).cpu().numpy()[0]
+
+        head = self._served[variable]
+        if head == "quantile_net" or variable not in self._boosters:
+            predicted = net_prediction
+        else:
+            gbm = np.array([self._boosters[variable][level].predict(X)[0]
+                            for level in self.QUANTILES])
+            weight = self._blend[variable] if head == "blend" else 0.0
+            predicted = weight * net_prediction + (1 - weight) * gbm
+        # independently fitted quantiles can cross; re-sorting is what the
+        # training-time evaluation did, so serving must do the same
+        predicted = np.sort(predicted)
 
         quantiles = {level: float(predicted[i]) for i, level in enumerate(self.QUANTILES)}
         median = quantiles[0.5]
@@ -114,5 +149,5 @@ class MOSCorrector:
             interval_coverage_nominal=0.80,
             raw_ensemble_mean=raw_mean,
             correction=float(median - raw_mean) if np.isfinite(raw_mean) else float("nan"),
-            algorithm_version=self.algorithm_version,
+            algorithm_version=f"{self.algorithm_version}:{head}",
             parents=[model for model in MODELS if forecasts.get(model) is not None])
