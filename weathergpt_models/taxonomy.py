@@ -244,6 +244,14 @@ VARIABLE_SPECS: tuple[VariableSpec, ...] = (
 CANONICAL_VARIABLES: tuple[str, ...] = tuple(dict.fromkeys(
     [spec.canonical for spec in VARIABLE_SPECS] + ["other"]))
 
+# canonical variable -> the unit families that are physically compatible with
+# it.  Used as a hard veto: no statistical model, however confident, is allowed
+# to map a field into a variable whose declared unit contradicts it.
+ALLOWED_UNIT_FAMILIES: dict[str, tuple[str, ...]] = {}
+for _spec in VARIABLE_SPECS:
+    ALLOWED_UNIT_FAMILIES.setdefault(_spec.canonical, tuple(_spec.families))
+del _spec
+
 _COMPILED = [
     (spec,
      [re.compile(pattern, re.I) for pattern in spec.keywords],

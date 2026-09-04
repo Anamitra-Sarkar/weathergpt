@@ -419,3 +419,22 @@ def test_precipitation_interval_low_cannot_be_negative():
         r'if variable in \("precipitation",\):(?:\s*\n\s*#.*)*\s*\n\s*'
         r'interval_low = max\(0\.0, interval_low\)',
         source), "the conformal interval_low for precipitation must be re-clamped to zero"
+
+
+def test_allowed_unit_families_covers_every_canonical_variable():
+    from weathergpt_models.taxonomy import ALLOWED_UNIT_FAMILIES, CANONICAL_VARIABLES
+
+    missing = set(CANONICAL_VARIABLES) - {"other"} - set(ALLOWED_UNIT_FAMILIES)
+    assert not missing, f"no allowed-unit-family entry for {missing}"
+
+
+def test_temperature_and_precipitation_families_are_disjoint():
+    """The concrete contradiction the model-path veto exists to catch."""
+    from weathergpt_models.taxonomy import ALLOWED_UNIT_FAMILIES, unit_family
+
+    temp_families = set(ALLOWED_UNIT_FAMILIES["temperature_max"])
+    assert unit_family("mm") not in temp_families
+    assert unit_family("K") in temp_families
+    precip_families = set(ALLOWED_UNIT_FAMILIES["precipitation_amount"])
+    assert unit_family("mm") in precip_families
+    assert unit_family("K") not in precip_families

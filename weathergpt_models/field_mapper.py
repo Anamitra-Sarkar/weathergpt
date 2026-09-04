@@ -6,8 +6,9 @@ from pathlib import Path
 
 import numpy as np
 
-from weathergpt_models.taxonomy import (CANONICAL_VARIABLES, EVIDENCE_CLASSES, STATISTICS,
-                                        VERTICAL_LEVELS, classify_native_field)
+from weathergpt_models.taxonomy import (ALLOWED_UNIT_FAMILIES, CANONICAL_VARIABLES,
+                                        EVIDENCE_CLASSES, STATISTICS, VERTICAL_LEVELS,
+                                        classify_native_field, unit_family)
 from weathergpt_models.types import FieldMapping
 
 
@@ -123,7 +124,32 @@ class FieldMapper:
         vector = vector / (np.linalg.norm(vector) + 1e-9)
         similarity = self.label_embeddings @ vector
         order = np.argsort(-similarity)
-        best, second = int(order[0]), int(order[1])
+
+        # Hard veto: no similarity score, however confident, may place a field
+        # into a variable whose declared unit contradicts it.  The trained model
+        # abstains on plenty of real unit contradictions, but it is a statistical
+        # judgement and not a guarantee -- verified directly: TMAX + unit "mm"
+        # scored 0.75 similarity to temperature_max, comfortably above the
+        # calibrated abstention threshold, because the model's confidence was
+        # never asked to certify a hard physical constraint.  This walks the
+        # ranked candidates and takes the first whose unit family is compatible,
+        # falling through to `other` (abstain) if none is.
+        declared_family = unit_family(unit) if unit is not None else None
+
+        def compatible(index: int) -> bool:
+            allowed = ALLOWED_UNIT_FAMILIES.get(self.variables[index])
+            return (declared_family is None or declared_family == "categorical"
+                    or allowed is None or declared_family in allowed)
+
+        best = next((int(candidate) for candidate in order if compatible(int(candidate))), None)
+        no_compatible_candidate = best is None
+        if no_compatible_candidate:
+            # every candidate's declared unit family contradicts it -- there is
+            # nothing safe to return, so fall back to the top score purely to
+            # have a runner-up/margin to report, and force an abstain below
+            best = int(order[0])
+        picked_past_top = best != int(order[0])
+        second = int(order[1]) if int(order[1]) != best else int(order[2])
         score = float(similarity[best])
 
         torch = self._torch
@@ -133,7 +159,8 @@ class FieldMapper:
             level = self.levels[int(self.level_head(pooled).argmax(-1))]
             evidence = self.evidence_classes[int(self.class_head(pooled).argmax(-1))]
 
-        abstained = score < self.threshold or self.variables[best] == "other"
+        abstained = (score < self.threshold or self.variables[best] == "other"
+                    or no_compatible_candidate)
         from weathergpt_models.taxonomy import parse_accumulation_hours
 
         accumulation = (parse_accumulation_hours(f"{time_range_text} {name} {description}")
@@ -144,7 +171,8 @@ class FieldMapper:
             evidence_class=evidence_class_hint or evidence,
             confidence=score, abstained=abstained,
             runner_up=self.variables[second], margin=float(similarity[best] - similarity[second]),
-            source="abstain" if abstained else "model",
+            source=("abstain" if abstained else
+                    ("model_unit_filtered" if picked_past_top else "model")),
             algorithm_version=self.algorithm_version)
 
     def map_many(self, fields: list) -> list:
