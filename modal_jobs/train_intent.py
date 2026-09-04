@@ -137,7 +137,13 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
         dtype=torch.float32, device=device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
-    steps = max(1, epochs * (len(splits["train"]) // batch_size))
+    # ceil, not floor: range(0, n, batch_size) always emits a final partial
+    # batch when n is not a multiple of batch_size, so floor division undercounts
+    # the real number of scheduler.step() calls per epoch and OneCycleLR raises
+    # once the extra batches run it past its declared total_steps -- caught mid-epoch-10
+    import math
+    batches_per_epoch = math.ceil(len(splits["train"]) / batch_size)
+    steps = max(1, epochs * batches_per_epoch)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, total_steps=steps,
                                                     pct_start=0.1)
 
