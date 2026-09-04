@@ -235,20 +235,52 @@ def build_retrieval_plan(question: str, horizon: str,
     plan = _build_retrieval_plan_rule_based(question, horizon)  # existing function
     if registry and registry.intent is not None:
         parsed = registry.intent.parse(question)
-        if parsed.intent_confidence > 0.5:
+        if parsed.intent_confidence > 0.35:
             plan.decision_context = plan.decision_context or parsed.intent
         # do NOT use parsed.variables -- M3's variable head is a known weak
-        # point (micro-F1 0.094 on held-out data); only intent and slots
-        # (parsed.slot_text("LOC")/"TIME"/"CROP") are validated for use
+        # point (micro-F1 0.170 on held-out data as of the v2 retrain); only
+        # intent and slots (parsed.slot_text("LOC")/"TIME"/"CROP") are
+        # validated for use
     return plan
 ```
 
+**The 0.5 confidence threshold in an earlier draft of this doc does not
+work — corrected here after live testing, not from theory.**
+`modal_jobs/realworld_check.py` ran M3 against a dozen genuinely
+never-templated queries (casual phrasing, typos, "tmrw"/"rn"-style
+shorthand, code-switched Hindi/Tamil, out-of-domain questions) and every
+single one came back with `intent_confidence` between 0.148 and 0.19 — for
+an 8-class softmax, that is barely above the ~0.125 uniform-guess floor. A
+`> 0.5` gate means M3's intent output would **never fire on real user
+phrasing**, only on text that looks like the D4 templates it was trained on.
+0.35 is not a validated threshold either (there is no labelled real-world
+eval set to tune it against yet) — it is a documented placeholder that lets
+the signal through as a tie-breaker while the rule parser still owns the
+decision when both disagree or when M3 abstains below the gate. Whoever
+wires this in should treat the threshold as a knob to revisit once real
+query logs exist, not as settled.
+
+Also observed in that same test: intent *accuracy* on natural phrasing is
+mixed even when confidence is set aside. "should i take umbrella tmrw
+morning shillong" was classified `harvest` (should be a plain rain query);
+"hey can u tell me if its safe for boats near puri tomorow morning" came
+back `travel` where `marine` was the better fit (M3 does get near-identical
+phrasing right on template-style input — see `verify_package.py`'s
+"Can fishermen go to sea off Ratnagiri tomorrow?" -> `marine`). **Location
+and time slot extraction held up much better** on the same live queries —
+`LOC`/`TIME` spans were extracted correctly on 10 of 12, including through
+typos and shorthand — which is why this doc's original guidance to trust
+slots but not variables is extended here to *also* not over-trust the raw
+intent label on organic phrasing without the rule parser as the deciding
+vote.
+
 **Do not call `registry.intent`'s `variables` output for anything.** It is
-documented in `backup/MODEL_RESULTS_LOG.md` as broken (the training templates
-only ever exercise 19 of 46 canonical variables as a positive label, several
-with single-digit support). Location and time resolution should still go
-through `location_resolver.py` and `time_parser.py` — M3 gives you the
-*substring* to feed them, not a resolved coordinate or timestamp.
+documented in `backup/MODEL_RESULTS_LOG.md` as broken (macro-F1 0.120 on
+held-out data even after the v2 retrain — most of the 46 canonical
+variables still have thin or zero support). Location and time resolution
+should still go through `location_resolver.py` and `time_parser.py` — M3
+gives you the *substring* to feed them, not a resolved coordinate or
+timestamp.
 
 ---
 
