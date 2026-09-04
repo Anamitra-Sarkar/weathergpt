@@ -30,8 +30,13 @@ from datetime import datetime
 from modal_jobs.common import DATA_DIR, DATA_IMAGE, GROQ_SECRET, VOLUMES, app
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODELS = ["openai/gpt-oss-120b", "openai/gpt-oss-20b",
-               "qwen/qwen3.8-27b", "qwen/qwen3.6-27b"]
+# qwen/qwen3.6-27b is dropped: it reliably 400s under `response_format:
+# json_object` ("Failed to validate JSON. Please adjust your prompt"),
+# verified directly -- 3/3 calls in a diagnostic burst, a deterministic
+# failure that retries cannot fix and that burned three retry sleeps per call
+# for a guaranteed rejection.  qwen/qwen3.8-27b is the one model in the
+# rotation that returned clean JSON on every successful diagnostic call.
+GROQ_MODELS = ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"]
 
 # Decision contexts.  These are exactly RADE's domains plus the two
 # non-decision cases, so the parser's output feeds the policy engine directly.
@@ -215,11 +220,22 @@ def expand_shard(rows: list, languages: list, shard_id: int,
                                 headers={"Authorization": f"Bearer {key}"},
                                 json={"model": model,
                                       "messages": [{"role": "user", "content": prompt}],
-                                      "temperature": 0.8, "max_tokens": 400,
-                                      "response_format": {"type": "json_object"}})
+                                      "temperature": 0.8, "max_tokens": 300})
                             if response.status_code == 429:
-                                await asyncio.sleep(4 * (attempt + 1))
+                                # Groq's per-org rate limit is tight enough that
+                                # even modest concurrency hits it routinely --
+                                # verified directly, 7/12 concurrent calls got an
+                                # instant 429.  A longer backoff clears it; a
+                                # short one just re-hits the same window.
+                                await asyncio.sleep(6 * (attempt + 1) + random.random() * 3)
                                 continue
+                            if response.status_code == 400:
+                                # a deterministic generation failure for this
+                                # (model, prompt) pair, not a transient one --
+                                # retrying the identical request wastes two more
+                                # rounds for a guaranteed second and third 400
+                                rejected["http"] += 1
+                                return
                             response.raise_for_status()
                             break
                         except Exception:
