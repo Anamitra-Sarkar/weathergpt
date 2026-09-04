@@ -109,3 +109,52 @@ ensemble (−5.5% precipitation, −21.8% temperature). Two causes, both fixed:
   shape 0.05, and midpoint on 513 points still lost 44%. `gammainc` is exact but
   has no gradient in the shape, so training samples through `Gamma.rsample` and
   inference uses `gammainc`.
+
+## M3 / D4 — deferred, with root cause
+
+D4 (multilingual query corpus) failed to complete across five configurations in
+this session, each narrowing the blast radius:
+
+| attempt | shards × concurrency | languages/row | outcome |
+|---|---|---|---|
+| 1 | 4 × 4 (all 13 languages/row) | 13 | 95 min, zero output — killed |
+| 2 | 4 × 2 | 5 | 45 min, zero output — killed |
+| 3 | 4 × 3, progress logging added | 3 | still zero progress lines after 12 min |
+| 4 | 4 × 2, dropped a broken model, fixed backoff | 3 | still zero progress lines |
+| 5 | 1 × 3, smaller target | 2 | remote container produced one line then went silent; `modal app logs` on the still-registered app showed nothing further; the CLI's own iterator raised `RemoteError` with no recoverable message |
+
+**Root causes identified, in order found:**
+
+1. **A direct diagnostic against the live Groq API** (12 concurrent calls, no
+   semaphore) showed 7/12 got an instant 429 — the per-org rate limit is
+   substantially tighter than a single warm-up call suggested, and `n_shards`
+   containers each running their own `concurrency`-limited semaphore multiplies
+   into a much higher *global* concurrent load against the same key than any
+   single shard's setting implies (4 shards × concurrency 2 = 8 concurrent, not
+   2).
+2. **`qwen/qwen3.6-27b` deterministically 400s** under `response_format:
+   json_object` ("Failed to validate JSON") — 3/3 in the same diagnostic burst.
+   Fixed: dropped from the rotation, `response_format` dropped entirely (the
+   code already validates parsed JSON, so the constraint bought nothing but a
+   second failure mode).
+3. After both fixes, a single-shard run still went silent after printing only
+   its dispatch line, and the CLI's `expand_shard.starmap()` iterator raised
+   `RemoteError`. `modal app logs` on the still-registered app showed the same
+   single line and nothing else — consistent with the container process being
+   terminated by Modal's runtime rather than a Python exception inside the
+   function (which would have printed a traceback into the function's own
+   stdout, and none appeared).
+
+**Decision:** stopped rather than continuing to narrow parameters against an
+environment that is failing in a way five iterations of tuning did not resolve.
+M3 (JointBERT intent/slot parser on MuRIL) is fully written
+(`modal_jobs/train_intent.py`) and its inference class, registry gate and
+export-card section are all in place and tested — it needs only a real D4
+corpus to run against. The retry-logic and model-rotation fixes made along the
+way are real and committed regardless of whether D4 itself completes; they will
+matter for any future attempt.
+
+**To resume:** try `n_shards=1 concurrency=1` with `per-template=10
+languages-per-row=1` as a minimal smoke test first, confirm at least one
+`[d4:0] N/M calls done` progress line appears within a few minutes, and only
+scale up from a configuration that is actually observed to produce output.
