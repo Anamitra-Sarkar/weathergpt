@@ -25,12 +25,14 @@ class _QuantileNet:
     def modules(self):
         return {"body": self.body, "head": self.head}
 
-    def __call__(self, x):
+    def __call__(self, x, anchor):
         torch = self._torch
         raw = self.head(self.body(x))
-        # cumulative softplus: the quantiles are monotone by construction, so a
-        # 90th percentile can never come back below the 10th
-        return raw[:, :1] + torch.cat(
+        # quantiles are a correction to the raw ensemble mean, spaced upward by
+        # cumulative softplus, so a 90th percentile can never come back below the
+        # 10th.  Must match train_mos.py exactly.
+        base = anchor.unsqueeze(-1) + raw[:, :1]
+        return base + torch.cat(
             [torch.zeros_like(raw[:, :1]),
              torch.cumsum(torch.nn.functional.softplus(raw[:, 1:]), dim=1)], dim=1)
 
@@ -120,8 +122,13 @@ class MOSCorrector:
         X = assemble_features(variable, members, others, context)
         mean, std, conformal = self._scalers[variable]
         tensor = torch.tensor((X - mean) / std, dtype=torch.float32, device=self.device)
+        with np.errstate(invalid="ignore", all="ignore"):
+            anchor_value = float(np.nan_to_num(np.nanmean(members), nan=0.0))
+        if self._transform.get(variable) == "cbrt":
+            anchor_value = float(np.cbrt(anchor_value))
+        anchor = torch.tensor([anchor_value], dtype=torch.float32, device=self.device)
         with torch.no_grad():
-            net_prediction = self._nets[variable](tensor).cpu().numpy()[0]
+            net_prediction = self._nets[variable](tensor, anchor).cpu().numpy()[0]
 
         def inverse(values):
             # precipitation is fitted in cube-root space; quantiles commute with

@@ -83,6 +83,16 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         return torch.maximum(quantiles * error, (quantiles - 1) * error).mean()
 
     class QuantileNet(nn.Module):
+        """Predicts quantiles as a correction to the raw ensemble mean.
+
+        Predicting the absolute value from standardised features makes the
+        network spend its capacity rediscovering the ensemble mean it is already
+        being handed.  Anchoring gives it that for free — the lowest quantile is
+        the ensemble mean plus a learned offset, and the rest are spaced above it
+        by cumulative softplus, so the ladder is monotone by construction and a
+        90th percentile can never come back below the 10th.
+        """
+
         def __init__(self, in_dim: int, n_quantiles: int, hidden: int = 256):
             super().__init__()
             self.body = nn.Sequential(
@@ -91,12 +101,13 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                 nn.Linear(hidden, hidden // 2), nn.SiLU(),
             )
             self.head = nn.Linear(hidden // 2, n_quantiles)
+            nn.init.zeros_(self.head.weight)
+            nn.init.zeros_(self.head.bias)
 
-        def forward(self, x):
+        def forward(self, x, anchor):
             raw = self.head(self.body(x))
-            # cumulative-softplus keeps the quantiles monotone by construction,
-            # so the model can never emit a 90th percentile below its 10th
-            return raw[:, :1] + torch.cat(
+            base = anchor.unsqueeze(-1) + raw[:, :1]
+            return base + torch.cat(
                 [torch.zeros_like(raw[:, :1]),
                  torch.cumsum(nn.functional.softplus(raw[:, 1:]), dim=1)], dim=1)
 
@@ -135,11 +146,20 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
         std = X[train_mask].std(0)
         std[std < 1e-6] = 1.0
 
+        # The anchor lives in the same space the network is trained in, so for
+        # precipitation it is the cube root of the ensemble mean.
+        with np.errstate(invalid="ignore", all="ignore"):
+            anchor_all = np.nan_to_num(np.nanmean(members, axis=1), nan=0.0)
+        anchor_all = forward_transform(target, anchor_all)
+
         Xtr = torch.tensor((X[train_mask] - mean) / std, dtype=torch.float32)
         ytr = torch.tensor(forward_transform(target, y[train_mask]), dtype=torch.float32)
+        Atr = torch.tensor(anchor_all[train_mask], dtype=torch.float32)
         Xva = torch.tensor((X[val_mask] - mean) / std, dtype=torch.float32, device=device)
+        Ava = torch.tensor(anchor_all[val_mask], dtype=torch.float32, device=device)
         yva_np = y[val_mask]
         Xte = torch.tensor((X[test_mask] - mean) / std, dtype=torch.float32, device=device)
+        Ate = torch.tensor(anchor_all[test_mask], dtype=torch.float32, device=device)
         yte_np = y[test_mask]
 
         quantile_tensor = torch.tensor(levels, dtype=torch.float32, device=device)
@@ -157,7 +177,8 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                 index = perm[start:start + batch_size]
                 xb = Xtr[index].to(device, non_blocking=True)
                 yb = ytr[index].to(device, non_blocking=True)
-                loss = pinball(net(xb), yb, quantile_tensor)
+                ab = Atr[index].to(device, non_blocking=True)
+                loss = pinball(net(xb, ab), yb, quantile_tensor)
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
@@ -166,8 +187,9 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
             scheduler.step()
             net.eval()
             with torch.no_grad():
-                val_predictions = torch.cat([net(Xva[i:i + 65536])
-                                             for i in range(0, len(Xva), 65536)]).cpu().numpy()
+                val_predictions = torch.cat(
+                    [net(Xva[i:i + 65536], Ava[i:i + 65536])
+                     for i in range(0, len(Xva), 65536)]).cpu().numpy()
             val_crps = float(crps_from_quantiles(
                 inverse_transform(target, val_predictions), yva_np, levels).mean())
             if val_crps < best_val:
@@ -188,9 +210,11 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
 
         with torch.no_grad():
             val_predictions = inverse_transform(target, torch.cat(
-                [net(Xva[i:i + 65536]) for i in range(0, len(Xva), 65536)]).cpu().numpy())
+                [net(Xva[i:i + 65536], Ava[i:i + 65536])
+                 for i in range(0, len(Xva), 65536)]).cpu().numpy())
             test_predictions = inverse_transform(target, torch.cat(
-                [net(Xte[i:i + 65536]) for i in range(0, len(Xte), 65536)]).cpu().numpy())
+                [net(Xte[i:i + 65536], Ate[i:i + 65536])
+                 for i in range(0, len(Xte), 65536)]).cpu().numpy())
         # cubing preserves order, but re-sort anyway so a downstream consumer can
         # rely on monotone quantiles without re-checking
         val_predictions = np.sort(val_predictions, axis=1)
@@ -346,7 +370,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
                          "mean": artifacts[target]["mean"], "std": artifacts[target]["std"],
                          "names": artifacts[target]["names"],
                          "conformal_q": artifacts[target]["conformal_q"],
-                         "in_dim": artifacts[target]["in_dim"],
+                         "in_dim": artifacts[target]["in_dim"], "anchored": True,
                          "blend_weight": artifacts[target]["blend_weight"],
                          "served_head": artifacts[target]["served_head"],
                          "target_transform": TARGET_TRANSFORM.get(target, "identity")}

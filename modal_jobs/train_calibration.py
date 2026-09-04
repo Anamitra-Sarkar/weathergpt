@@ -177,26 +177,47 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         return term1 - term2
 
     class DistributionalHead(nn.Module):
-        def __init__(self, in_dim: int, family: str, hidden: int = 192):
+        """Predicts a distribution *anchored on the raw ensemble*.
+
+        The first version predicted the absolute value from standardised
+        features and underfitted badly: on temperature it reached a training
+        CRPS of 0.589 against a raw-ensemble 0.594, i.e. it spent forty epochs
+        learning to reproduce the ensemble mean it was already being handed.
+
+        Anchoring is what EMOS actually is.  The network predicts a *correction*
+        to the ensemble mean and a spread that scales with the ensemble spread,
+        so the easy part of the problem is free and the capacity goes into the
+        part that is not: the conditional bias and the dispersion error.
+        """
+
+        def __init__(self, in_dim: int, family: str, hidden: int = 256):
             super().__init__()
             self.family = family
             self.net = nn.Sequential(
                 nn.Linear(in_dim, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
                 nn.Linear(hidden, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
-                nn.Linear(hidden, 4 if family == "csgd" else 2),
+                nn.Linear(hidden, hidden // 2), nn.SiLU(),
+                nn.Linear(hidden // 2, 4 if family == "csgd" else 2),
             )
+            # start as the identity correction with ensemble-scaled spread
+            nn.init.zeros_(self.net[-1].weight)
+            nn.init.zeros_(self.net[-1].bias)
 
-        def forward(self, x):
+        def forward(self, x, anchor_mean, anchor_spread):
             raw = self.net(x)
             if self.family == "csgd":
-                # (probability of a wet hour, gamma shape, gamma scale, censoring
-                # shift).  The shift is non-positive, which is the standard CSGD
-                # form and keeps small shapes out of the divergent tail.
-                return (torch.sigmoid(raw[:, 0]).clamp(1e-4, 1 - 1e-4),
-                        F.softplus(raw[:, 1]) + 0.05,
-                        F.softplus(raw[:, 2]) + 0.05,
-                        -F.softplus(raw[:, 3]).clamp(max=25.0))
-            return raw[:, 0], F.softplus(raw[:, 1]) + 0.05
+                # (P(wet), gamma shape, conditional wet mean, censoring shift).
+                # The wet mean is anchored on the ensemble mean so the gamma does
+                # not have to discover the scale of rainfall from scratch.
+                p_wet = torch.sigmoid(raw[:, 0] + 1.0).clamp(1e-4, 1 - 1e-4)
+                shape = F.softplus(raw[:, 1] + 0.5) + 0.05
+                wet_mean = F.softplus(raw[:, 2] + 1.0) * (anchor_mean.clamp(min=0.0) + 0.2)
+                scale = (wet_mean / shape).clamp(min=1e-3)
+                shift = -F.softplus(raw[:, 3]).clamp(max=25.0)
+                return p_wet, shape, scale, shift
+            mu = anchor_mean + raw[:, 0]
+            sigma = F.softplus(raw[:, 1] + 0.5) * (anchor_spread + 0.3) + 0.05
+            return mu, sigma
 
     results: dict = {}
     artifacts: dict = {}
@@ -215,10 +236,20 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         std[std < 1e-6] = 1.0
         to_tensor = lambda a: torch.tensor((a - mean) / std, dtype=torch.float32)  # noqa: E731
 
+        with np.errstate(invalid="ignore", all="ignore"):
+            anchor_mean_all = np.nan_to_num(np.nanmean(members, axis=1), nan=0.0)
+            anchor_spread_all = np.nan_to_num(np.nanstd(members, axis=1), nan=0.0)
+
         Xtr = to_tensor(X[tr])
         ytr = torch.tensor(y[tr], dtype=torch.float32)
+        Atr = torch.tensor(anchor_mean_all[tr], dtype=torch.float32)
+        Str = torch.tensor(anchor_spread_all[tr], dtype=torch.float32)
         Xva = to_tensor(X[va]).to(device)
+        Ava = torch.tensor(anchor_mean_all[va], dtype=torch.float32, device=device)
+        Sva = torch.tensor(anchor_spread_all[va], dtype=torch.float32, device=device)
         Xte = to_tensor(X[te]).to(device)
+        Ate = torch.tensor(anchor_mean_all[te], dtype=torch.float32, device=device)
+        Ste = torch.tensor(anchor_spread_all[te], dtype=torch.float32, device=device)
         yva_np, yte_np = y[va], y[te]
 
         head = DistributionalHead(X.shape[1], family).to(device)
@@ -239,7 +270,9 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
                 index = perm[start:start + batch_size]
                 xb = Xtr[index].to(device, non_blocking=True)
                 yb = ytr[index].to(device, non_blocking=True)
-                loss = crps_of(head(xb), yb).mean()
+                ab = Atr[index].to(device, non_blocking=True)
+                sb = Str[index].to(device, non_blocking=True)
+                loss = crps_of(head(xb, ab, sb), yb).mean()
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(head.parameters(), 5.0)
@@ -248,7 +281,8 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             scheduler.step()
             head.eval()
             with torch.no_grad():
-                chunks = [float(crps_of(head(Xva[i:i + 65536]),
+                chunks = [float(crps_of(head(Xva[i:i + 65536], Ava[i:i + 65536],
+                                             Sva[i:i + 65536]),
                                         torch.tensor(yva_np[i:i + 65536], dtype=torch.float32,
                                                      device=device)).sum())
                           for i in range(0, len(Xva), 65536)]
@@ -267,10 +301,11 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         head.eval()
 
         @torch.no_grad()
-        def sample(x_tensor, size: int = 199) -> np.ndarray:
+        def sample(x_tensor, anchor, spread, size: int = 199) -> np.ndarray:
             out = []
             for i in range(0, len(x_tensor), 32768):
-                parameters = head(x_tensor[i:i + 32768])
+                parameters = head(x_tensor[i:i + 32768], anchor[i:i + 32768],
+                                  spread[i:i + 32768])
                 if family == "csgd":
                     shape, scale, shift = parameters
                     draws = torch.distributions.Gamma(shape, 1.0 / scale).sample((size,)).T
@@ -282,10 +317,11 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             return np.concatenate(out)
 
         @torch.no_grad()
-        def exceedance(x_tensor, threshold: float) -> np.ndarray:
+        def exceedance(x_tensor, anchor, spread, threshold: float) -> np.ndarray:
             out = []
             for i in range(0, len(x_tensor), 32768):
-                parameters = head(x_tensor[i:i + 32768])
+                parameters = head(x_tensor[i:i + 32768], anchor[i:i + 32768],
+                                  spread[i:i + 32768])
                 if family == "csgd":
                     p_wet, shape, scale, shift = parameters
                     point = torch.full_like(shape, float(threshold))
@@ -298,9 +334,10 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
             return np.concatenate(out)
 
         scores = {}
-        for split_name, mask, x_tensor, observed in (("val", va, Xva, yva_np),
-                                                     ("test_spatial_holdout", te, Xte, yte_np)):
-            model_samples = sample(x_tensor)
+        for split_name, mask, x_tensor, anchor, spread, observed in (
+                ("val", va, Xva, Ava, Sva, yva_np),
+                ("test_spatial_holdout", te, Xte, Ate, Ste, yte_np)):
+            model_samples = sample(x_tensor, anchor, spread)
             raw = members[mask]
             model_crps = float(crps_ensemble(model_samples, observed).mean())
             raw_crps = float(crps_ensemble(raw, observed).mean())
@@ -331,14 +368,14 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
         if variable == "precipitation":
             isotonics, exceedance_report = {}, {}
             for threshold in THRESHOLDS:
-                model_val = exceedance(Xva, threshold)
+                model_val = exceedance(Xva, Ava, Sva, threshold)
                 observed_val = (yva_np > threshold).astype(float)
                 iso = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
                 iso.fit(model_val, observed_val)
                 isotonics[threshold] = iso
 
                 raw_test = (members[te] > threshold).mean(1)
-                model_test = exceedance(Xte, threshold)
+                model_test = exceedance(Xte, Ate, Ste, threshold)
                 calibrated = iso.predict(model_test)
                 observed_test = (yte_np > threshold).astype(float)
                 base_rate = float(observed_test.mean())
@@ -390,6 +427,7 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
     import pickle
 
     torch.save({variable: {"state_dict": artifacts[variable]["head"].state_dict(),
+                           "anchored": True,
                            "mean": artifacts[variable]["mean"],
                            "std": artifacts[variable]["std"],
                            "family": artifacts[variable]["family"],
