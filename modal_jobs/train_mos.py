@@ -315,6 +315,7 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 5e-4,
         # independently, so re-sort rather than emit a 90th below a 10th
         gbm_val = np.sort(gbm_val, axis=1)
         gbm_test = np.sort(gbm_test, axis=1)
+        gbm_val_scores = score(val_mask, gbm_val)
         gbm_scores = score(test_mask, gbm_test)
 
         # --- blend the two heads, weight chosen on validation only -----------
@@ -331,15 +332,24 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 5e-4,
         blend_test = np.sort(blend_weight * test_predictions
                              + (1 - blend_weight) * gbm_test, axis=1)
         blend_scores = score(test_mask, blend_test)
+        blend_val_crps = float(min(val_crps_by_weight))
         blend_scores["blend_weight_on_quantile_net"] = blend_weight
-        blend_scores["val_crps_at_chosen_weight"] = float(min(val_crps_by_weight))
+        blend_scores["val_crps_at_chosen_weight"] = blend_val_crps
         print(f"[m2:{target}] blend w={blend_weight:.2f} "
               f"net {test_scores['crps_model']:.4f} / gbm {gbm_scores['crps_model']:.4f} "
               f"-> blend {blend_scores['crps_model']:.4f}")
 
-        # the served head is whichever actually won on the spatial holdout
-        served = min((("quantile_net", test_scores), ("lightgbm", gbm_scores),
-                      ("blend", blend_scores)), key=lambda item: item[1]["crps_model"])
+        # The served head is chosen on VALIDATION, never on the spatial holdout:
+        # the blend weight is already picked there, and the higher-level choice
+        # of which head to serve at all must be made on the same held-out slice
+        # the model has not been fitted or selected against, or the reported
+        # test-split metric stops being an honest estimate of held-out skill.
+        served = min((("quantile_net", val_scores["crps_model"]),
+                      ("lightgbm", gbm_val_scores["crps_model"]),
+                      ("blend", blend_val_crps)), key=lambda item: item[1])
+        print(f"[m2:{target}] served head chosen on validation: {served[0]} "
+              f"(val_crps net={val_scores['crps_model']:.4f} "
+              f"gbm={gbm_val_scores['crps_model']:.4f} blend={blend_val_crps:.4f})")
         results[target] = {
             "target_transform": TARGET_TRANSFORM.get(target, "identity"),
             "val": val_scores, "test_spatial_holdout": test_scores,
