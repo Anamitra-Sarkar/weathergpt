@@ -71,26 +71,47 @@ def check_forecast_truth_corpus(frame, *, name: str, pairs: list, min_rows: int 
 
 def check_lead_time_signal(frame, *, report: ContractReport, lead_column: str,
                            forecast_column: str, truth_column: str) -> None:
-    """Forecast error must grow with lead time.  If it does not, the lead column
-    is not a forecast age — which is exactly what `lead_hours = i % 72` was."""
+    """Forecast skill must decay with lead time.
+
+    If it does not, the lead column is not a forecast age -- which is exactly
+    what `lead_hours = i % 72` was.
+
+    Skill is measured by correlation, not by mean absolute error.  MAE is the
+    obvious choice and it is misleading for precipitation: as lead grows, a model
+    relaxes toward climatology and forecasts *less* rain, and against a truth
+    that is dry 84% of the time that reduces MAE even as skill falls.  Measured
+    on this corpus, precipitation MAE rises through day 4 and then drops from
+    0.238 to 0.191 by day 7, while correlation falls monotonically. Temperature,
+    being roughly symmetric, shows the expected MAE growth throughout
+    (1.62 -> 2.15). Correlation is the metric under-forecasting cannot game.
+    """
     import numpy as np
 
     subset = frame[[lead_column, forecast_column, truth_column]].dropna()
     if len(subset) < 1000:
         report.check("lead_signal", False, f"only {len(subset)} paired rows", fatal=False)
         return
-    error = (subset[forecast_column] - subset[truth_column]).abs()
-    grouped = error.groupby(subset[lead_column]).mean().sort_index()
-    if len(grouped) < 3:
-        report.check("lead_signal", False, f"only {len(grouped)} distinct leads", fatal=False)
+    leads, correlations, errors = [], [], []
+    for lead, block in subset.groupby(lead_column):
+        if len(block) < 500:
+            continue
+        forecast = block[forecast_column].to_numpy(dtype="float64")
+        truth = block[truth_column].to_numpy(dtype="float64")
+        if forecast.std() < 1e-9 or truth.std() < 1e-9:
+            continue
+        leads.append(float(lead))
+        correlations.append(float(np.corrcoef(forecast, truth)[0, 1]))
+        errors.append(float(np.abs(forecast - truth).mean()))
+    if len(leads) < 3:
+        report.check("lead_signal", False, f"only {len(leads)} usable leads", fatal=False)
         return
-    leads = grouped.index.to_numpy(dtype="float64")
-    values = grouped.to_numpy(dtype="float64")
-    slope = float(np.polyfit(leads, values, 1)[0])
-    report.check("lead_error_grows_with_lead", slope > 0,
-                 f"mean |error| slope vs lead = {slope:.6f} per unit lead; a non-positive "
+
+    slope = float(np.polyfit(leads, correlations, 1)[0])
+    report.check("lead_skill_decays_with_lead", slope < 0,
+                 f"correlation slope vs lead = {slope:+.6f} per unit lead; a non-negative "
                  f"slope means the lead column carries no forecast-age information. "
-                 f"profile={dict(zip(leads.tolist(), np.round(values, 3).tolist()))}",
+                 f"correlation={dict(zip(leads, np.round(correlations, 4).tolist()))} "
+                 f"mae={dict(zip(leads, np.round(errors, 4).tolist()))}",
                  fatal=False)
 
 

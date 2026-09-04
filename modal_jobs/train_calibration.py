@@ -53,7 +53,7 @@ TARGETS = (("precipitation", "csgd"), ("temperature_2m", "gaussian"),
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
               timeout=60 * 150, memory=32768)
-def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int = 42,
+def train(epochs: int = 40, batch_size: int = 8192, lr: float = 5e-4, seed: int = 42,
           patience: int = 8) -> dict:
     import numpy as np
     import torch
@@ -307,9 +307,12 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 2e-3, seed: int 
                 parameters = head(x_tensor[i:i + 32768], anchor[i:i + 32768],
                                   spread[i:i + 32768])
                 if family == "csgd":
-                    shape, scale, shift = parameters
-                    draws = torch.distributions.Gamma(shape, 1.0 / scale).sample((size,)).T
-                    draws = (draws + shift.unsqueeze(-1)).clamp(min=0.0)
+                    p_wet, shape, scale, shift = parameters
+                    wet_draws = torch.distributions.Gamma(shape, 1.0 / scale).sample((size,)).T
+                    wet_draws = (wet_draws + shift.unsqueeze(-1)).clamp(min=0.0)
+                    # the atom at zero: a draw is dry with probability 1 - p_wet
+                    is_wet = (torch.rand_like(wet_draws) < p_wet.unsqueeze(-1)).to(wet_draws.dtype)
+                    draws = wet_draws * is_wet
                 else:
                     mu, sigma = parameters
                     draws = torch.distributions.Normal(mu, sigma).sample((size,)).T

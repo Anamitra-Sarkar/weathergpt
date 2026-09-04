@@ -249,7 +249,15 @@ def report(repo_id: str = "weathergpt/models") -> str:
 
 
 @app.local_entrypoint()
-def main(repo_id: str = "", private: bool = False, dry_run: bool = False):
+def main(repo_id: str = "", private: bool = False, dry_run: bool = False,
+         card_only: str = ""):
+    """`--card-only docs/MODELS.md` writes the generated card and uploads nothing."""
+    if card_only:
+        text = report.remote(repo_id or "weathergpt/models")
+        with open(card_only, "w") as handle:
+            handle.write(text)
+        print(f"wrote {card_only} ({len(text)} bytes)")
+        return
     if not repo_id and not dry_run:
-        raise SystemExit("pass --repo-id <user>/<name>, or --dry-run")
+        raise SystemExit("pass --repo-id <user>/<name>, --dry-run, or --card-only <path>")
     export.remote(repo_id or "dry/run", private=private, dry_run=dry_run)

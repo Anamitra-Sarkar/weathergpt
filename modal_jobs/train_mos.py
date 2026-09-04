@@ -46,7 +46,7 @@ TARGET_TRANSFORM = {"precipitation": "cbrt"}
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
               timeout=60 * 150, memory=32768)
-def train(epochs: int = 30, batch_size: int = 8192, lr: float = 2e-3,
+def train(epochs: int = 30, batch_size: int = 8192, lr: float = 5e-4,
           seed: int = 42, max_gbm_rows: int = 1_200_000, patience: int = 6) -> dict:
     import numpy as np
     import pandas as pd
