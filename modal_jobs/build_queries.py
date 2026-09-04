@@ -428,7 +428,7 @@ def read_locations() -> str:
 
 
 @app.local_entrypoint()
-def main(n_shards: int = 8, seed: int = 42, per_template: int = 26,
+def main_build_queries(n_shards: int = 8, seed: int = 42, per_template: int = 26,
          merge_existing: bool = False, languages_per_row: int = 0,
          concurrency: int = 4, batch_size: int = 4):
     meta = json.loads(read_locations.remote())

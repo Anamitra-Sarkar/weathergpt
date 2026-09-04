@@ -316,5 +316,5 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
 
 
 @app.local_entrypoint()
-def main(base_model: str = "google/muril-base-cased", epochs: int = 8):
+def main_train_intent(base_model: str = "google/muril-base-cased", epochs: int = 8):
     train.remote(base_model=base_model, epochs=epochs)

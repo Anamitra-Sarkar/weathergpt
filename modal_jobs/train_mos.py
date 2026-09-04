@@ -418,5 +418,5 @@ def train(epochs: int = 30, batch_size: int = 8192, lr: float = 5e-4,
 
 
 @app.local_entrypoint()
-def main(epochs: int = 30):
+def main_train_mos(epochs: int = 30):
     train.remote(epochs=epochs)

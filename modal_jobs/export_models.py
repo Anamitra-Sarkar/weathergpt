@@ -249,7 +249,7 @@ def report(repo_id: str = "weathergpt/models") -> str:
 
 
 @app.local_entrypoint()
-def main(repo_id: str = "", private: bool = False, dry_run: bool = False,
+def main_export_models(repo_id: str = "", private: bool = False, dry_run: bool = False,
          card_only: str = ""):
     """`--card-only docs/MODELS.md` writes the generated card and uploads nothing."""
     if card_only:

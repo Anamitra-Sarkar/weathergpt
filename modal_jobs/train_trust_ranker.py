@@ -302,5 +302,5 @@ def train(seed: int = 42, max_groups: int = 400_000, num_boost_round: int = 400)
 
 
 @app.local_entrypoint()
-def main():
+def main_train_trust_ranker():
     train.remote()

@@ -485,5 +485,5 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 5e-4, seed: int 
 
 
 @app.local_entrypoint()
-def main(epochs: int = 40):
+def main_train_calibration(epochs: int = 40):
     train.remote(epochs=epochs)

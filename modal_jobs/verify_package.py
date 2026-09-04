@@ -185,6 +185,6 @@ def verify() -> dict:
 
 
 @app.local_entrypoint()
-def main():
+def main_verify_package():
     result = verify.remote()
     print(json.dumps({"passed": result["passed"], "n_checks": result["n_checks"]}, indent=2))

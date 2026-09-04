@@ -396,7 +396,7 @@ def _shards(locations: list[dict], n: int) -> list[list[dict]]:
 
 
 @app.local_entrypoint()
-def main(what: str = "all", n_shards: int = 16, limit: int = 0):
+def main_build_corpora(what: str = "all", n_shards: int = 16, limit: int = 0):
     """modal run modal_jobs/build_corpora.py --what all"""
     start, end = _window()
     print(f"window {start} -> {end}")

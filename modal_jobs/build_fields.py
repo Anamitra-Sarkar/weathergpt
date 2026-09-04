@@ -570,5 +570,5 @@ def build_d3() -> dict:
 
 
 @app.local_entrypoint()
-def main():
+def main_build_fields():
     build_d3.remote()

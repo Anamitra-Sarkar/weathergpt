@@ -72,5 +72,5 @@ def run():
 
 
 @app.local_entrypoint()
-def main():
+def main_real_world_test():
     run.remote()

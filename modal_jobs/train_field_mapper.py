@@ -369,7 +369,7 @@ def train(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, batch_size: int
 
 
 @app.local_entrypoint()
-def main(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, variant: str = "",
+def main_train_field_mapper(base_model: str = DEFAULT_BASE_MODEL, epochs: int = 6, variant: str = "",
          batch_size: int = 64, lr: float = 2e-5):
     train.remote(base_model=base_model, epochs=epochs, variant=variant,
                  batch_size=batch_size, lr=lr)

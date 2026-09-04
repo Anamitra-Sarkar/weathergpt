@@ -31,5 +31,5 @@ def show(keys: str = "") -> dict:
 
 
 @app.local_entrypoint()
-def main(keys: str = ""):
+def main_show_metrics(keys: str = ""):
     show.remote(keys)
