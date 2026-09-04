@@ -130,27 +130,37 @@ worthless, whereas scoring against the *text* of the label transfers meaning
 from the pretrained encoder. A new canonical variable can be added later by
 writing one sentence.
 
-**M2** emits seven monotone quantiles trained with pinball loss, from a network
-and a gradient-boosted forest blended at a weight chosen on validation, with
-conformalised intervals so the nominal 80% band really contains the truth about
-80% of the time. Precipitation is fitted in cube-root space and cubed back —
-exact, because quantiles are equivariant under a monotone transform.
+**M2** emits seven monotone quantiles trained with pinball loss, anchored on the
+raw ensemble mean rather than predicted from scratch — the output layer
+initialises at zero, so training starts as the identity correction and spends
+its capacity on the part that is actually hard. A network and a gradient-boosted
+forest are both fitted; which one is served (or their blend, at a weight chosen
+on validation) is *also* selected on validation, never on the held-out test
+split, so the reported test metric stays an honest estimate of what a fresh
+deployment would see. Precipitation is fitted in cube-root space and cubed
+back — exact, because quantiles are equivariant under a monotone transform.
 
 **M3** is a JointBERT head on MuRIL: intent, BIO slot spans and multi-label
 variables from one encoder. MuRIL was pretrained on 17 Indian languages *and*
 their transliterations, so Hinglish is in-distribution. The predecessor used
 `distilbert-base-uncased`, which turns every Devanagari character into `[UNK]`.
 
-**M4** fits a censored shifted gamma for precipitation — a point mass at zero
-for the dry hours, a long right tail for monsoon bursts — by minimising CRPS,
-then refines each exceedance threshold with isotonic regression. Two
-implementation notes that matter: quadrature of the predictive CDF is the
-obvious approach and it is wrong here, because a CSGD fitted to mostly-dry
-precipitation converges to a very small shape parameter where the gamma density
-has an integrable singularity at zero that no polynomial grid resolves; and
+**M4** fits a hurdle model for precipitation only: an explicit P(wet) times a
+censored shifted gamma for how much falls if it is — a point mass at zero for
+the dry hours, a long right tail for monsoon bursts — by minimising CRPS, then
+refines each exceedance threshold with isotonic regression. Two implementation
+notes that matter: quadrature of the predictive CDF is the obvious approach and
+it is wrong here, because a CSGD fitted to mostly-dry precipitation converges to
+a very small shape parameter where the gamma density has an integrable
+singularity at zero that no polynomial grid resolves; and
 `torch.special.gammainc` is exact but carries no gradient in the shape. Training
 estimates CRPS from reparameterised `Gamma.rsample` draws; inference uses
-`gammainc`.
+`gammainc`. Temperature and wind were tried too and dropped: anchored the same
+way, they still lost to the raw four-model ensemble's fair CRPS by -37.9% and
+-24.7%, because a discrete four-point ensemble from genuinely skillful models is
+a hard baseline for a symmetric two-parameter distribution to beat, and M2's
+quantile network already beats it on both. M4 is scoped to the exceedance
+probabilities it actually wins at.
 
 **M5** exists to test a claim that was previously untested. The authority terms
 in `app/services/ranker.py` are constant across sources at a given point and
