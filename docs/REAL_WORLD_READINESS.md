@@ -192,15 +192,23 @@ a provider.
 
 ## Open items not covered by this report
 
-- **Models are not yet published anywhere `app/` can load them from.**
-  They live on the private Modal volume `weathergpt-models`. `pip install -e
-  weathergpt_models` + `ModelRegistry.from_dir(...)` works today only from
-  code that can mount that volume (i.e. more Modal functions); getting them
-  into the deployed FastAPI service needs either a Hugging Face Hub publish
-  (`modal_jobs/export_models.py` is dry-run tested, never actually run) or a
-  Modal-hosted inference endpoint the app calls over HTTP. Neither has been
-  done — this is the actual blocker between "models work" and "models are
-  live," and is a decision for whoever owns deployment.
+- **Update 2026-09-04: published.** All 5 gate-passing models are now on
+  the Hugging Face Hub at `Arko007/weathergpt-models` (private repo, 2.16 GB,
+  model card auto-generated from each `metrics.json` — nothing typed by
+  hand). `app/` can now load them with:
+  ```python
+  from weathergpt_models import ModelRegistry
+  registry = ModelRegistry.from_hub("Arko007/weathergpt-models")
+  ```
+  This needs read access to the private repo (an HF token with read scope
+  on that repo, passed the same way `huggingface_hub` normally authenticates
+  — `HF_TOKEN` env var or `huggingface-cli login`). The remaining blocker is
+  purely `app/`-side: no code under `app/` calls `ModelRegistry` yet — see
+  `docs/MODEL_REGISTRY_INTEGRATION.md` for the exact integration points.
+  Reproduce or re-publish with `modal run modal_jobs/export_models.py
+  --repo-id Arko007/weathergpt-models --private` (uses the `arko007-hf-token`
+  Modal secret; never pass a token on the command line or commit one to the
+  repo).
 - **No labelled real-world eval set exists yet.** This report is a smoke
   test, not a benchmark — there was no gold-labelled intent for the 12 live
   queries, so "wrong" above is a judgment call, not a scored metric. Once

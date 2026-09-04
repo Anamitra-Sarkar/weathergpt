@@ -18,7 +18,7 @@ import modal
 
 from modal_jobs.common import MODEL_DIR, TRAIN_IMAGE, TRAIN_VOLUMES, app
 
-HF_SECRET = modal.Secret.from_name("hf-upload-token")
+HF_SECRET = modal.Secret.from_name("arko007-hf-token")
 
 
 def _fmt(value, digits: int = 4) -> str:
@@ -207,9 +207,10 @@ def export(repo_id: str, private: bool = False, dry_run: bool = False) -> dict:
         return {"models": list(bundle), "skipped": skipped, "bytes": total, "uploaded": False}
 
     token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or \
-        os.environ.get("hf_token")
+        os.environ.get("hf_token") or os.environ.get("HF_TOKEN_ARKO007")
     if not token:
-        raise RuntimeError("no HF token in the modal secret (expected HF_TOKEN)")
+        raise RuntimeError("no HF token in the modal secret (expected HF_TOKEN, "
+                           "HUGGINGFACE_TOKEN, hf_token, or HF_TOKEN_ARKO007)")
     api = HfApi(token=token)
     who = api.whoami()
     print(f"[export] uploading as {who.get('name')}")

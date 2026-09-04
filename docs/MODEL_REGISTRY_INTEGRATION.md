@@ -18,9 +18,16 @@ owns `app/`. Nothing below has been applied to `app/`.
 ```python
 from weathergpt_models import ModelRegistry
 
-registry = ModelRegistry.from_dir("/path/to/downloaded/bundle")
-# or, once published: ModelRegistry.from_hub("<user>/<repo>")
+registry = ModelRegistry.from_hub("Arko007/weathergpt-models")
+# or, if you'd rather stage the bundle onto local/container disk yourself:
+# ModelRegistry.from_dir("/path/to/downloaded/bundle")
 ```
+
+Published 2026-09-04, private repo (2.16 GB, all 5 gate-passing models).
+`from_hub` needs an HF token with read access to that repo — same
+authentication `huggingface_hub` always uses (`HF_TOKEN` env var or
+`huggingface-cli login`), ask for read access to be added to the repo if
+you don't have it yet.
 
 Load this **once**, at process startup, not per-request — model weights stay
 resident in memory. `registry.status()` tells you what loaded and, for
