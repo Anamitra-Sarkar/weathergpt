@@ -210,3 +210,26 @@ fully fixes the throughput problem), but D4/M3 stay deferred. Next session
 should measure single-batched-call latency directly (the same diagnostic
 pattern used to find the 429/400 issues) before assuming batching alone is
 sufficient.
+
+**Third attempt, per user direction: delegated to `opencode run --model
+opencode/muse-spark-1.3-contributor-free`** (a genuine free-tier model in
+opencode's catalog — "Muse Spark" is not a persona, it is that model's actual
+name, which explains why an earlier session's report was signed by it). Given
+a detailed brief matching the exact D4 schema and the substring-verification
+rule, it correctly read `build_queries.py`, rebuilt ~26 base English template
+rows with real Indian district names, times and crops, and printed them for
+inspection — genuine, correct work, no hardcoded/corrupted slots. It then
+stalled during the translation-generation step: ~30 minutes elapsed with CPU
+time advancing only ~1 second per 5 minutes (i.e. almost entirely idle,
+waiting on a model response), and no output file was ever written. Killed
+after 30 minutes with nothing to show. Likely cause: the free/contributor tier
+of that model is heavily throttled or queued, similavailable to the Groq
+on_demand tier's queueing that sank the first two attempts.
+
+`modal_jobs/import_muse_spark_d4.py` is kept — a converter from any hand- or
+model-generated JSONL corpus (matching the documented row schema) into a proper
+`d4_queries.parquet` with the same contracts (slot-substring re-verification,
+dedup, split by template family + location) the original pipeline used. It is
+ready to run the moment a corpus exists by any means, including a future
+muse-spark attempt with a much smaller per-call ask (e.g. 10-20 rows per call
+instead of ~300 in one shot).
