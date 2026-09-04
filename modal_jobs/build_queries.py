@@ -197,6 +197,7 @@ def expand_shard(rows: list, languages: list, shard_id: int,
     async def run():
         out, rejected = [], {"http": 0, "json": 0, "slot_not_substring": 0, "span_align": 0}
         semaphore = asyncio.Semaphore(concurrency)
+        completed = [0]
         async with httpx.AsyncClient(timeout=90) as client:
             async def one(row, language, model):
                 crop = row.get("crop_value")
@@ -261,6 +262,13 @@ def expand_shard(rows: list, languages: list, shard_id: int,
                             "time_value": str(payload.get("time")).strip(),
                             "crop_value": str(payload.get("crop")).strip() if crop else None})
 
+            async def one_tracked(row, language, model):
+                await one(row, language, model)
+                completed[0] += 1
+                if completed[0] % 50 == 0 or completed[0] == total_calls:
+                    print(f"[d4:{shard_id}] {completed[0]}/{total_calls} calls done, "
+                          f"kept {len(out)} rejected {rejected}")
+
             # Sending every base row to every language is the obvious plan and
             # it is both slower and less diverse: one API key cannot sustain
             # thirteen calls per row without spending most of its time in 429
@@ -276,7 +284,11 @@ def expand_shard(rows: list, languages: list, shard_id: int,
                     chosen = languages
                 for offset, language in enumerate(chosen):
                     model = GROQ_MODELS[(index + offset) % len(GROQ_MODELS)]
-                    tasks.append(one(row, language, model))
+                    tasks.append(one_tracked(row, language, model))
+            total_calls = len(tasks)
+            print(f"[d4:{shard_id}] dispatching {total_calls} calls "
+                  f"({len(rows)} rows, up to {languages_per_row or len(languages)} "
+                  f"languages each) at concurrency={concurrency}")
             await asyncio.gather(*tasks)
         print(f"[d4:{shard_id}] kept {len(out)} rejected {rejected}")
         return out
