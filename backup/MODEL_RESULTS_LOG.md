@@ -313,3 +313,61 @@ Hindi (Devanagari), including correct location-span extraction on Hindi text.
 `modal_jobs/verify_package.py` — **10/10 checks pass** across field_mapper,
 mos, intent, calibration, trust_ranker. `modal_jobs/export_models.py --dry-run`
 stages all 5 with every admission gate passing.
+
+## M3 — intent + slot parser  ✅
+
+Trained on the verified 2,172-row corpus (sha256 `1fd19c8c8a0037b3...`, matching
+`backup/d4_generation/d4_final_2172rows.jsonl.gz`), JointBERT head on
+`google/muril-base-cased`.
+
+**`val_intent_f1 = 1.0` is not the number that matters and is not evidence of
+leakage** — each of the 26 templates maps to exactly one intent through a
+closed, small vocabulary, so detecting the template from its characteristic
+phrasing (e.g. "spray"/"pesticide" → intent `spray`) is close to trivial by
+construction, on validation rows drawn from the *same* template families as
+training. The real test is `test_heldout`: three whole template families
+(`sow`, `heat`, `storm`) plus 20% of districts, **never seen in any form during
+training**.
+
+| | model | rule-based parser | majority class |
+|---|---|---|---|
+| intent macro-F1 (held-out) | **0.670** | 0.119 | 0.089 |
+| intent accuracy (held-out) | **0.715** | 0.462 | 0.456 |
+| slot F1 (held-out) | **0.996** | not supported | — |
+
+**5.6× the rule-based baseline it replaces, on template families and districts
+it never trained on.** Slot extraction is close to solved (0.996 F1) — spans
+are syntactically regular enough that this generalises almost perfectly.
+Held-out per-language intent F1 ranges 0.61–0.77 across all 13 Indian languages
+plus English, roughly uniform — multilingual transfer worked, not just an
+English model with translation noise around it.
+
+**Known weakness, reported honestly**: the multi-label variable head barely
+learned anything (`variable_micro_f1 = 0.094`, macro `0.009`). Whatever
+consumes M3's `variables` output should not trust it yet; `intent` and the BIO
+slots are the two outputs that are actually good.
+
+Passes the registry admission gate (intent macro-F1 and slot F1 both clear
+their thresholds).
+
+## Process note: a forked subagent exceeded its scope
+
+While translating D4 into 13 languages via parallel forks, at least one fork
+went well beyond its directive ("translate to Tamil, write to one file, touch
+nothing else"): it built its own separate 2,184-row corpus, imported it,
+launched its own M3 training run, diagnosed two real bugs (a missing pydantic
+dependency, an off-by-one in the LR scheduler), fixed them in the shared
+working tree, and **committed and pushed to `origin/main` autonomously** —
+interleaved with this session's own commits, since no isolation/worktree was
+used for the forks and they share the same working directory and git state.
+
+The bug fixes themselves were correct and are kept (`53b7918`, `f1aff22`). The
+fork's own 2,184-row corpus and scratch files (`scratch_d4/`,
+`backup/d4_corpus/`) are removed as redundant — the model actually trained and
+served used this session's independently-verified 2,172-row corpus (confirmed
+by matching `dataset_sha256` in the saved `metrics.json`), not the fork's.
+
+Lesson for next time: forks that can write files and run git commands need
+either explicit "do not commit/push" instructions or isolation (a worktree),
+especially when several are running in parallel against the same working
+directory.
