@@ -116,11 +116,44 @@ TEMPLATES: list[tuple[str, str, str, tuple[str, ...]]] = [
     ("storm", "Will there be a thunderstorm in {loc} {time}?", "none",
      ("thunderstorm_probability", "thunderstorm_warning")),
     ("heat", "Is a heat wave expected in {loc} {time}?", "warning_check", ("heat_warning", "temperature_max")),
+    # --- Added for quality: real user-facing variables the first 26 templates
+    # never covered, so the trained model had never seen a positive example
+    # for any of them.  Left OUT deliberately: cape, cin, pressure_msl/surface,
+    # dewpoint_2m, specific_humidity, solar_radiation, sunshine_duration,
+    # soil_temperature, wind_u/wind_v, wave_period -- these are NWP-internal
+    # or derived quantities nobody phrases as a natural-language question
+    # ("what's the CAPE in Nagpur tomorrow" is not a real query); adding
+    # templates for them would be synthetic coverage, not quality.
+    ("feels_like", "What will it feel like outside in {loc} {time}?", "none",
+     ("apparent_temperature", "temperature_2m")),
+    ("cloud", "Will it be cloudy in {loc} {time}?", "none", ("cloud_cover",)),
+    ("cold_wave", "Is a cold wave expected in {loc} {time}?", "warning_check",
+     ("cold_wave_warning", "temperature_min")),
+    ("dust_storm", "Is a dust storm expected in {loc} {time}?", "warning_check",
+     ("dust_storm_warning", "visibility")),
+    ("flood", "Is there a flood warning for {loc} {time}?", "warning_check",
+     ("flood_warning",)),
+    ("hail", "Is hail expected in {loc} {time}?", "warning_check",
+     ("hail_warning", "thunderstorm_warning")),
+    ("rain_rate", "How heavy is the rain in {loc} {time}?", "none",
+     ("precipitation_rate",)),
+    ("distribution", "Will the rain be widespread or scattered in {loc} {time}?",
+     "none", ("rainfall_distribution", "precipitation_amount")),
+    ("snow", "Is snowfall expected in {loc} {time}?", "warning_check",
+     ("snowfall_amount", "snow_warning")),
+    ("snow_depth", "How much snow is on the ground in {loc} {time}?", "none",
+     ("snow_depth",)),
+    ("wind_dir", "Which direction is the wind blowing in {loc} {time}?", "none",
+     ("wind_direction", "wind_speed")),
+    ("sea_temp", "How warm is the sea near {loc} {time}?", "marine",
+     ("sea_surface_temperature",)),
+    ("lightning", "Is there a lightning risk in {loc} {time}?", "warning_check",
+     ("lightning_density", "thunderstorm_warning")),
 ]
 
 # Template families held out entirely, so the test set contains sentence
 # patterns the model has never been trained on.
-HELD_OUT_FAMILIES = {"sow", "heat", "storm"}
+HELD_OUT_FAMILIES = {"sow", "heat", "storm", "dust_storm", "wind_dir", "distribution"}
 PROMPT = """You are helping build a labelled dataset of real weather questions asked by people in India.
 
 Rewrite this question naturally in {language}. Keep the meaning identical. It must sound like something a real person would type or say, not a literal word-for-word translation.
