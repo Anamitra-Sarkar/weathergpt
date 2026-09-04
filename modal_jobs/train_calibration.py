@@ -47,8 +47,19 @@ from modal_jobs.common import DATA_DIR, MODEL_DIR, TRAIN_IMAGE, TRAIN_VOLUMES, a
 
 ALGORITHM_VERSION = "m4_calibration_v1"
 THRESHOLDS = (0.1, 1.0, 5.0, 10.0, 25.0, 50.0)
-TARGETS = (("precipitation", "csgd"), ("temperature_2m", "gaussian"),
-           ("wind_speed_10m", "gaussian"))
+# Only precipitation.  A first version also fit Gaussian EMOS heads for
+# temperature and wind, anchored on the ensemble exactly like the hurdle CSGD
+# below.  Measured result: CRPS -37.9% (temperature) and -24.7% (wind) against
+# the raw four-model ensemble's fair CRPS, even at the first epoch.  A
+# four-member ensemble drawn from genuinely skillful, independently-run NWP
+# models is a strong, hard-to-beat baseline for a symmetric error distribution
+# with only four points to place -- and M2's quantile network already beats
+# that baseline on both variables (CRPS +12% on temperature) using the actual
+# forecast distribution rather than a two-parameter Gaussian summary. M4 is
+# scoped to what a hurdle CSGD is for: the exceedance probabilities a rainfall
+# decision actually needs, which the Gaussian branch below is kept generic
+# enough to serve if a future variable needs it, but nothing currently does.
+TARGETS = (("precipitation", "csgd"),)
 
 
 @app.function(image=TRAIN_IMAGE, volumes=TRAIN_VOLUMES, gpu="A10G",
@@ -224,6 +235,7 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 5e-4, seed: int 
 
     for variable, family in TARGETS:
         X, y, names, members, keep = build_features(frame, variable)
+        del names  # kept for interface symmetry with M2, unused here
         tr = masks["train"] & keep
         va = masks["val"] & keep
         te = masks["test"] & keep
