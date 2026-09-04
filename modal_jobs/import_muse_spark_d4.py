@@ -113,7 +113,7 @@ def import_and_assemble(rows: list, seed: int = 42) -> dict:
 
 
 @app.local_entrypoint()
-def main(jsonl_path: str = "scratch_d4_muse_spark.jsonl", seed: int = 42):
+def import_d4(jsonl_path: str = "scratch_d4_muse_spark.jsonl", seed: int = 42):
     rows = []
     with open(jsonl_path) as handle:
         for line in handle:
