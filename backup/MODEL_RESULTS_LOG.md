@@ -158,3 +158,23 @@ matter for any future attempt.
 languages-per-row=1` as a minimal smoke test first, confirm at least one
 `[d4:0] N/M calls done` progress line appears within a few minutes, and only
 scale up from a configuration that is actually observed to produce output.
+
+**Addendum after a fifth, fully-serial (`concurrency=1`) smoke test:** still zero
+progress after 13 minutes on a 260-call queue, with no error surfaced by
+`modal app logs` on the live container. Read closely, the retry loop bounds
+each call to at most 3 attempts and cannot infinite-loop; the likely explanation
+is Groq's `on_demand` service tier itself, which reports a `queue_time` field on
+every response and can plausibly take tens of seconds per call under load —
+consistent with every earlier "silent for 40+ minutes" observation being real,
+slow progress rather than a hang. At that per-call cost, one-call-per-language
+cannot finish a corpus of any useful size within a session at any concurrency
+low enough to avoid the 429 wall.
+
+**The architectural fix for next time:** batch languages into the prompt
+instead of issuing one call per language. Asking one Groq call to return
+translations into 3-5 languages at once (a JSON array instead of a single
+object) cuts the call count by the same factor and should bring total wall time
+back into a session-sized budget without touching the rate limit at all. Not
+attempted here for lack of remaining time; the slot-substring verification in
+`expand_shard`'s `one()` would need to iterate the array instead of a single
+payload, which is a contained change.
