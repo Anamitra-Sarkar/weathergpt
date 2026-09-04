@@ -405,3 +405,16 @@ def test_bio_spans_align_to_whitespace_tokens():
 
     # a span outside the text produces no covered tokens, and the row is rejected
     assert spans_to_bio("rain tomorrow", [(400, 410, "LOC")]) is None
+
+
+def test_precipitation_interval_low_cannot_be_negative():
+    """quantiles[0.1] is clamped to >= 0 for precipitation, but the conformal
+    widening happens after that clamp and can still push interval_low negative
+    if it is not clamped again -- a rain-rate lower bound below zero is not a
+    valid interval, whatever the model's raw arithmetic says."""
+    import re
+
+    source = open("weathergpt_models/mos.py").read()
+    assert re.search(
+        r'if variable in \("precipitation",\):\s*\n\s*#.*\n\s*interval_low = max\(0\.0, interval_low\)',
+        source), "the conformal interval_low for precipitation must be re-clamped to zero"

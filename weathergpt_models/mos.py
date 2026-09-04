@@ -157,10 +157,17 @@ class MOSCorrector:
             median = max(0.0, median)
             quantiles = {level: max(0.0, value) for level, value in quantiles.items()}
 
+        interval_low = quantiles[0.1] - conformal
+        interval_high = quantiles[0.9] + conformal
+        if variable in ("precipitation",):
+            # the point quantiles are clamped above; the conformal widening on
+            # the low side must not reintroduce a negative rain rate
+            interval_low = max(0.0, interval_low)
+
         return CorrectedForecast(
             variable=variable, value=median, quantiles=quantiles,
-            interval_low=float(quantiles[0.1] - conformal),
-            interval_high=float(quantiles[0.9] + conformal),
+            interval_low=float(interval_low),
+            interval_high=float(interval_high),
             interval_coverage_nominal=0.80,
             raw_ensemble_mean=raw_mean,
             correction=float(median - raw_mean) if np.isfinite(raw_mean) else float("nan"),
