@@ -178,3 +178,15 @@ back into a session-sized budget without touching the rate limit at all. Not
 attempted here for lack of remaining time; the slot-substring verification in
 `expand_shard`'s `one()` would need to iterate the array instead of a single
 payload, which is a contained change.
+
+**Second addendum:** implemented the batching fix (`modal_jobs/build_queries.py`,
+one call now returns up to 6 languages as a JSON array). A smoke test at
+concurrency=2 still showed zero progress after 9 minutes on 208 batched calls.
+Batching did not resolve it within the time available — either per-call latency
+scales with the larger requested output (1800 vs 300 max_tokens), or queueing
+dominates regardless of request size. The batching change is kept (it is a
+real improvement and correctly verified/committed independently of whether it
+fully fixes the throughput problem), but D4/M3 stay deferred. Next session
+should measure single-batched-call latency directly (the same diagnostic
+pattern used to find the 429/400 issues) before assuming batching alone is
+sufficient.
