@@ -12,26 +12,45 @@ from weathergpt_models.types import CalibratedProbability
 
 
 class _DistributionalHead:
-    def __init__(self, torch, in_dim: int, family: str, hidden: int = 192):
+    """Rebuilt to match `train_calibration.py`'s anchored architecture exactly.
+
+    This class previously diverged from the trainer after the anchoring change
+    (a 3rd hidden layer and hidden=192->256 were added there but not here), and
+    the mismatch surfaced as a `RuntimeError` from `load_state_dict` the first
+    time anything actually called `registry.calibration` -- the admission gate
+    only checks `metrics.json`, so a shape mismatch in the weights themselves
+    was invisible until real use.  Exactly the failure mode this project is
+    built to prevent, caught in a real-world smoke test rather than in training.
+    """
+
+    def __init__(self, torch, in_dim: int, family: str, hidden: int = 256):
         nn = torch.nn
         self.family = family
         self._torch = torch
         self.net = nn.Sequential(
             nn.Linear(in_dim, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
             nn.Linear(hidden, hidden), nn.SiLU(), nn.LayerNorm(hidden), nn.Dropout(0.1),
-            nn.Linear(hidden, 4 if family == "csgd" else 2))
+            nn.Linear(hidden, hidden // 2), nn.SiLU(),
+            nn.Linear(hidden // 2, 4 if family == "csgd" else 2))
 
-    def __call__(self, x):
+    def __call__(self, x, anchor_mean, anchor_spread):
         torch = self._torch
+        F = torch.nn.functional
         raw = self.net(x)
         if self.family == "csgd":
-            # must match train_calibration.py exactly: (P(wet), gamma shape,
-            # gamma scale, censoring shift), the shift non-positive
-            return (torch.sigmoid(raw[:, 0]).clamp(1e-4, 1 - 1e-4),
-                    torch.nn.functional.softplus(raw[:, 1]) + 0.05,
-                    torch.nn.functional.softplus(raw[:, 2]) + 0.05,
-                    -torch.nn.functional.softplus(raw[:, 3]).clamp(max=25.0))
-        return raw[:, 0], torch.nn.functional.softplus(raw[:, 1]) + 0.05
+            # (P(wet), gamma shape, conditional wet mean, censoring shift), must
+            # match train_calibration.py's DistributionalHead exactly. The wet
+            # mean is anchored on the ensemble mean so the gamma does not have
+            # to discover the scale of rainfall from scratch.
+            p_wet = torch.sigmoid(raw[:, 0] + 1.0).clamp(1e-4, 1 - 1e-4)
+            shape = F.softplus(raw[:, 1] + 0.5) + 0.05
+            wet_mean = F.softplus(raw[:, 2] + 1.0) * (anchor_mean.clamp(min=0.0) + 0.2)
+            scale = (wet_mean / shape).clamp(min=1e-3)
+            shift = -F.softplus(raw[:, 3]).clamp(max=25.0)
+            return p_wet, shape, scale, shift
+        mu = anchor_mean + raw[:, 0]
+        sigma = F.softplus(raw[:, 1] + 0.5) * (anchor_spread + 0.3) + 0.05
+        return mu, sigma
 
 
 class ProbabilityCalibrator:
@@ -95,8 +114,16 @@ class ProbabilityCalibrator:
         context = {key: np.asarray([value], dtype="float64") for key, value in context.items()}
         X = assemble_features(variable, members, others, context)
         mean, std = self._scalers[variable]
-        return members, self._torch.tensor((X - mean) / std, dtype=self._torch.float32,
+        tensor = self._torch.tensor((X - mean) / std, dtype=self._torch.float32,
+                                    device=self.device)
+        with np.errstate(invalid="ignore", all="ignore"):
+            anchor_mean = float(np.nan_to_num(np.nanmean(members), nan=0.0))
+            anchor_spread = float(np.nan_to_num(np.nanstd(members), nan=0.0))
+        anchor_mean_t = self._torch.tensor([anchor_mean], dtype=self._torch.float32,
                                            device=self.device)
+        anchor_spread_t = self._torch.tensor([anchor_spread], dtype=self._torch.float32,
+                                             device=self.device)
+        return members, tensor, anchor_mean_t, anchor_spread_t
 
     def exceedance_probability(self, variable: str, threshold: float, *,
                                forecasts: dict, context: dict,
@@ -104,11 +131,12 @@ class ProbabilityCalibrator:
         if variable not in self._heads:
             raise KeyError(f"{variable} was not trained; available: {sorted(self._heads)}")
         torch = self._torch
-        members, tensor = self._features(variable, forecasts, context, other_forecasts)
+        members, tensor, anchor_mean, anchor_spread = self._features(
+            variable, forecasts, context, other_forecasts)
         head = self._heads[variable]
 
         with torch.no_grad():
-            parameters = head(tensor)
+            parameters = head(tensor, anchor_mean, anchor_spread)
             if head.family == "csgd":
                 p_wet, shape, scale, shift = parameters
                 # hurdle: F(t) = (1 - p) + p * P(max(0, X + shift) <= t)

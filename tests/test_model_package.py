@@ -438,3 +438,39 @@ def test_temperature_and_precipitation_families_are_disjoint():
     precip_families = set(ALLOWED_UNIT_FAMILIES["precipitation_amount"])
     assert unit_family("mm") in precip_families
     assert unit_family("K") not in precip_families
+
+
+# --- calibration architecture parity -----------------------------------------
+def test_calibration_head_architecture_matches_the_trainer():
+    """weathergpt_models/calibration.py's _DistributionalHead must reproduce
+    train_calibration.py's anchored architecture bit for bit, or a real
+    checkpoint fails to load with a shape mismatch that the admission gate
+    cannot see -- it only reads metrics.json, never the weight shapes. This
+    exact drift shipped once already: the trainer grew a third hidden layer and
+    hidden 192->256 when it was anchored, and the serving class was not updated
+    to match, so `registry.calibration` reported loaded=True from the gate but
+    threw AttributeError('NoneType') the first time anything actually called
+    it, because the constructor's load_state_dict raised and was swallowed."""
+    import torch
+
+    from weathergpt_models.calibration import _DistributionalHead
+
+    head = _DistributionalHead(torch, in_dim=30, family="csgd", hidden=256)
+    shapes = [tuple(p.shape) for p in head.net.parameters()]
+    # 4 Linear layers (weight+bias each) = 8 parameter tensors; LayerNorm adds
+    # 2 more per norm (weight+bias), 2 norms = 4; total 12
+    assert len(shapes) == 12, f"expected 4 Linear + 2 LayerNorm layers, got {len(shapes)} tensors"
+    assert shapes[0] == (256, 30) and shapes[-2] == (4, 128), (
+        "input and output layer shapes must match the trainer's 256-wide, "
+        "128-wide-penultimate, 4-parameter-csgd-output architecture")
+
+    # forward must accept (x, anchor_mean, anchor_spread) and return 4 tensors
+    # for csgd, matching how the trainer calls it during CRPS optimisation
+    x = torch.randn(3, 30)
+    anchor_mean = torch.tensor([1.0, 2.0, 0.5])
+    anchor_spread = torch.tensor([0.5, 0.5, 0.5])
+    p_wet, shape, scale, shift = head(x, anchor_mean, anchor_spread)
+    assert p_wet.shape == shape.shape == scale.shape == shift.shape == (3,)
+    assert bool((p_wet >= 0).all() and (p_wet <= 1).all())
+    assert bool((shape > 0).all() and (scale > 0).all())
+    assert bool((shift <= 0).all()), "the censoring shift must stay non-positive"
