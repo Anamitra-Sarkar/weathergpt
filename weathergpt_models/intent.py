@@ -2,11 +2,26 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
 
 from weathergpt_models.types import ParsedQuery, Slot
+
+
+# Tags are assigned to whitespace tokens, so the last token of a span carries
+# whatever punctuation followed it — a TIME slot comes back as "tomorrow
+# afternoon?" and the downstream time parser then has to cope with the question
+# mark.  Trimmed here rather than in the corpus, because a user's own question
+# mark is real input.
+_EDGE_PUNCTUATION = re.compile(r"^[\s\u2018\u2019\u201c\u201d'\"(\[{,;:।]+|"
+                               r"[\s\u2018\u2019\u201c\u201d'\"?!.,;:)\]}।]+$")
+
+
+def _trim(text: str) -> str:
+    trimmed = _EDGE_PUNCTUATION.sub("", text).strip()
+    return trimmed or text.strip()
 
 
 class IntentParser:
@@ -111,7 +126,7 @@ class IntentParser:
             variables=[self.variables[i] for i in np.flatnonzero(
                 variable_probabilities > variable_threshold)],
             slots=[Slot(kind=item["kind"],
-                        text=" ".join(words[item["start"]:item["end"] + 1]),
+                        text=_trim(" ".join(words[item["start"]:item["end"] + 1])),
                         start_token=item["start"], end_token=item["end"])
                    for item in slots],
             algorithm_version=self.algorithm_version)

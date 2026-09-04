@@ -359,3 +359,49 @@ def test_cube_root_transform_preserves_quantiles():
     # a mean does not survive the round trip, which is the reason this only
     # works for a quantile model
     assert not np.isclose(np.cbrt(draws).mean() ** 3, draws.mean(), rtol=0.05)
+
+
+# --- slot text hygiene -------------------------------------------------------
+def test_slot_text_trims_edge_punctuation():
+    """BIO tags land on whitespace tokens, so the last token of a span carries
+    whatever punctuation followed it.  A TIME slot that comes back as
+    "tomorrow afternoon?" makes the downstream time parser deal with a question
+    mark that is not part of the time expression."""
+    import re
+
+    source = open("weathergpt_models/intent.py").read()
+    start = source.index("_EDGE_PUNCTUATION")
+    end = source.index("class IntentParser")
+    namespace = {"re": re}
+    exec(compile(source[start:end], "intent_trim", "exec"), namespace)  # noqa: S102
+    trim = namespace["_trim"]
+
+    assert trim("tomorrow afternoon?") == "tomorrow afternoon"
+    assert trim('"Kolhapur",') == "Kolhapur"
+    assert trim("नागपुर में।") == "नागपुर में"
+    assert trim("Bhandara district") == "Bhandara district"
+    # never trim a slot down to nothing
+    assert trim("???") == "???"
+
+
+def test_bio_spans_align_to_whitespace_tokens():
+    """The D4 builder computes spans from substrings it injected, so a span that
+    does not land on token boundaries means the row is mislabelled and must be
+    dropped rather than rounded to the nearest token."""
+    import re
+
+    source = open("modal_jobs/build_queries.py").read()
+    start = source.index("def _spans_to_bio")
+    end = source.index("def _build_base")
+    namespace = {"re": re}
+    exec(compile(source[start:end], "bio", "exec"), namespace)  # noqa: S102
+    spans_to_bio = namespace["_spans_to_bio"]
+
+    text = "Will it rain in Bhandara district tomorrow afternoon?"
+    tagged = spans_to_bio(text, [(16, 33, "LOC"), (34, 52, "TIME")])
+    assert [token for token, tag in tagged if tag.endswith("LOC")] == ["Bhandara", "district"]
+    assert [tag for _, tag in tagged if tag.endswith("LOC")] == ["B-LOC", "I-LOC"]
+    assert [token for token, tag in tagged if tag.endswith("TIME")] == ["tomorrow", "afternoon?"]
+
+    # a span outside the text produces no covered tokens, and the row is rejected
+    assert spans_to_bio("rain tomorrow", [(400, 410, "LOC")]) is None
