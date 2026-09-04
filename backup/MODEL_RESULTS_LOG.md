@@ -233,3 +233,27 @@ dedup, split by template family + location) the original pipeline used. It is
 ready to run the moment a corpus exists by any means, including a future
 muse-spark attempt with a much smaller per-call ask (e.g. 10-20 rows per call
 instead of ~300 in one shot).
+
+## D4 / M3 — resolved: hand-generated directly, no external API
+
+Per direction ("generate it yourself, don't hit any rate limit"), abandoned all
+three external-generation approaches and built the corpus with pure Python
+template substitution using vocabulary tables written directly (Claude's own
+knowledge of the 13 languages, composed once per phrase/template and reused,
+rather than free-form per-row translation trusted to an LLM call). Zero
+external API calls, so no rate limit of any kind applies.
+
+**Result: 2184 rows, 14 languages (13 + English) at exactly 156 rows each,
+0 rejected by independent re-verification, 0 duplicate rows, all 8 dataset
+contracts pass.** Majority-intent baseline is 42.3% (`none`), a real number —
+not the 85.75% degenerate distribution the original corpus had.
+
+The substring-correctness guarantee holds by construction, not by trust: each
+phrase (20 time expressions, 27 crops, 26 city names) has a fixed rendering per
+language, and each of the 26 sentence templates has a fixed per-language form
+with `{loc}/{time}/{crop}` placeholders — so a translated slot value is
+*always* a literal substring of the composed sentence, verified twice (once at
+generation, once independently after merging).
+
+Corpus and vocabulary tables backed up at `backup/d4_corpus/`. M3 training
+launched immediately after import.

@@ -1,0 +1,2042 @@
+[
+ {
+  "text": "Will it rain in Coimbatore today?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Coimbatore",
+  "time_value": "today",
+  "crop_value": null,
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "Will it rain in Shimla this weekend?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Shimla",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Will it rain in Siliguri late tonight?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Siliguri",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Will it rain in Indore district tonight?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Indore district",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-019"
+ },
+ {
+  "text": "Will it rain in Lucknow this weekend?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Will it rain in Varanasi late tonight?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Varanasi",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-020"
+ },
+ {
+  "text": "Is there any chance of rain at Udaipur district this weekend?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Udaipur district",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Is there any chance of rain at Indore district today?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Indore district",
+  "time_value": "today",
+  "crop_value": null,
+  "loc_id": "IN-019"
+ },
+ {
+  "text": "Is there any chance of rain at Puducherry in the next 2 hours?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "in the next 2 hours",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is there any chance of rain at Shimla day after tomorrow?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Shimla",
+  "time_value": "day after tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Is there any chance of rain at Bengaluru tomorrow?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Bengaluru",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-011"
+ },
+ {
+  "text": "Is there any chance of rain at Patna district coming Monday?",
+  "family": "rain_q",
+  "intent": "none",
+  "variables": [
+   "precipitation_probability"
+  ],
+  "loc_value": "Patna district",
+  "time_value": "coming Monday",
+  "crop_value": null,
+  "loc_id": "IN-004"
+ },
+ {
+  "text": "How much rainfall is expected in Shimla over the next 6 hours?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Shimla",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "How much rainfall is expected in Patna district tomorrow?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Patna district",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-004"
+ },
+ {
+  "text": "How much rainfall is expected in Hyderabad district the next 10 days?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Hyderabad district",
+  "time_value": "the next 10 days",
+  "crop_value": null,
+  "loc_id": "IN-010"
+ },
+ {
+  "text": "How much rainfall is expected in Udaipur tonight?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Udaipur",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "How much rainfall is expected in Amritsar district tomorrow?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Amritsar district",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "How much rainfall is expected in Amritsar this evening?",
+  "family": "rain_amt",
+  "intent": "none",
+  "variables": [
+   "precipitation_amount"
+  ],
+  "loc_value": "Amritsar",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "What will the temperature be in Bhopal district tomorrow evening?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Bhopal district",
+  "time_value": "tomorrow evening",
+  "crop_value": null,
+  "loc_id": "IN-015"
+ },
+ {
+  "text": "What will the temperature be in Chennai next 3 days?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Chennai",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-012"
+ },
+ {
+  "text": "What will the temperature be in Vijayawada this month?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Vijayawada",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "What will the temperature be in Bhubaneswar tomorrow evening?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Bhubaneswar",
+  "time_value": "tomorrow evening",
+  "crop_value": null,
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "What will the temperature be in Kochi district late tonight?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Kochi district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-013"
+ },
+ {
+  "text": "What will the temperature be in Vijayawada district tonight?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_2m"
+  ],
+  "loc_value": "Vijayawada district",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "How hot will it get in Jaipur district this evening?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Jaipur district",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "How hot will it get in Lucknow the next 10 days?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "the next 10 days",
+  "crop_value": null,
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "How hot will it get in Bengaluru the rest of the week?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Bengaluru",
+  "time_value": "the rest of the week",
+  "crop_value": null,
+  "loc_id": "IN-011"
+ },
+ {
+  "text": "How hot will it get in Coimbatore district tomorrow afternoon?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Coimbatore district",
+  "time_value": "tomorrow afternoon",
+  "crop_value": null,
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "How hot will it get in Kolkata late tonight?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Kolkata",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-005"
+ },
+ {
+  "text": "How hot will it get in Shimla district the next 10 days?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_max"
+  ],
+  "loc_value": "Shimla district",
+  "time_value": "the next 10 days",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Will it be cold in Chennai tomorrow afternoon?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Chennai",
+  "time_value": "tomorrow afternoon",
+  "crop_value": null,
+  "loc_id": "IN-012"
+ },
+ {
+  "text": "Will it be cold in Nagpur tonight?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Nagpur",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "Will it be cold in Patna tomorrow evening?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Patna",
+  "time_value": "tomorrow evening",
+  "crop_value": null,
+  "loc_id": "IN-004"
+ },
+ {
+  "text": "Will it be cold in Vijayawada district this month?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Vijayawada district",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Will it be cold in Kochi district this month?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Kochi district",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-013"
+ },
+ {
+  "text": "Will it be cold in Raipur district late tonight?",
+  "family": "temp_q",
+  "intent": "none",
+  "variables": [
+   "temperature_min"
+  ],
+  "loc_value": "Raipur district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "How strong is the wind in Nashik late tonight?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Nashik",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-001"
+ },
+ {
+  "text": "How strong is the wind in Shimla district tomorrow morning?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Shimla district",
+  "time_value": "tomorrow morning",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "How strong is the wind in Ahmedabad over the next 6 hours?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Ahmedabad",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "How strong is the wind in Siliguri district early morning?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Siliguri district",
+  "time_value": "early morning",
+  "crop_value": null,
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "How strong is the wind in Bhubaneswar the next 48 hours?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Bhubaneswar",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "How strong is the wind in Coimbatore tomorrow afternoon?",
+  "family": "wind_q",
+  "intent": "none",
+  "variables": [
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Coimbatore",
+  "time_value": "tomorrow afternoon",
+  "crop_value": null,
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "What is the humidity in Dehradun late tonight?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Dehradun",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ },
+ {
+  "text": "What is the humidity in Raipur this month?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Raipur",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "What is the humidity in Nagpur tomorrow morning?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Nagpur",
+  "time_value": "tomorrow morning",
+  "crop_value": null,
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "What is the humidity in Puducherry district this weekend?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Puducherry district",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "What is the humidity in Amritsar tomorrow?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Amritsar",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "What is the humidity in Nagpur late tonight?",
+  "family": "humid_q",
+  "intent": "none",
+  "variables": [
+   "humidity"
+  ],
+  "loc_value": "Nagpur",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "What is the weather in Kolkata the rest of the week?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Kolkata",
+  "time_value": "the rest of the week",
+  "crop_value": null,
+  "loc_id": "IN-005"
+ },
+ {
+  "text": "What is the weather in Bhubaneswar district early morning?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Bhubaneswar district",
+  "time_value": "early morning",
+  "crop_value": null,
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "What is the weather in Varanasi district day after tomorrow?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Varanasi district",
+  "time_value": "day after tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-020"
+ },
+ {
+  "text": "What is the weather in Dehradun the next 48 hours?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Dehradun",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ },
+ {
+  "text": "What is the weather in Vijayawada district over the next 6 hours?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Vijayawada district",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "What is the weather in Bhopal this weekend?",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Bhopal",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-015"
+ },
+ {
+  "text": "Give me the forecast for Lucknow district today.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Lucknow district",
+  "time_value": "today",
+  "crop_value": null,
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Give me the forecast for Ranchi the next 10 days.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Ranchi",
+  "time_value": "the next 10 days",
+  "crop_value": null,
+  "loc_id": "IN-018"
+ },
+ {
+  "text": "Give me the forecast for Nashik tonight.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Nashik",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-001"
+ },
+ {
+  "text": "Give me the forecast for Lucknow next week.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "next week",
+  "crop_value": null,
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Give me the forecast for Raipur next 3 days.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Raipur",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "Give me the forecast for Nagpur late tonight.",
+  "family": "general",
+  "intent": "none",
+  "variables": [
+   "temperature_2m",
+   "precipitation_amount"
+  ],
+  "loc_value": "Nagpur",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "Should I spray pesticide on my jute in Siliguri district this weekend?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Siliguri district",
+  "time_value": "this weekend",
+  "crop_value": "jute",
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Should I spray pesticide on my cotton in Nagpur district day after tomorrow?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Nagpur district",
+  "time_value": "day after tomorrow",
+  "crop_value": "cotton",
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "Should I spray pesticide on my onion in Patna district coming Monday?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Patna district",
+  "time_value": "coming Monday",
+  "crop_value": "onion",
+  "loc_id": "IN-004"
+ },
+ {
+  "text": "Should I spray pesticide on my coffee in Ahmedabad district tonight?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Ahmedabad district",
+  "time_value": "tonight",
+  "crop_value": "coffee",
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Should I spray pesticide on my jowar in Coimbatore tonight?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Coimbatore",
+  "time_value": "tonight",
+  "crop_value": "jowar",
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "Should I spray pesticide on my maize in Siliguri district tomorrow morning?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "precipitation_amount",
+   "wind_speed",
+   "wind_gust"
+  ],
+  "loc_value": "Siliguri district",
+  "time_value": "tomorrow morning",
+  "crop_value": "maize",
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Is late tonight a good time to spray my potato field near Guwahati?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Guwahati",
+  "time_value": "late tonight",
+  "crop_value": "potato",
+  "loc_id": "IN-007"
+ },
+ {
+  "text": "Is tomorrow evening a good time to spray my mustard field near Kolkata district?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Kolkata district",
+  "time_value": "tomorrow evening",
+  "crop_value": "mustard",
+  "loc_id": "IN-005"
+ },
+ {
+  "text": "Is tomorrow a good time to spray my potato field near Bhopal?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Bhopal",
+  "time_value": "tomorrow",
+  "crop_value": "potato",
+  "loc_id": "IN-015"
+ },
+ {
+  "text": "Is tonight a good time to spray my tea field near Puducherry?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "tonight",
+  "crop_value": "tea",
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is tomorrow a good time to spray my cumin field near Ranchi?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Ranchi",
+  "time_value": "tomorrow",
+  "crop_value": "cumin",
+  "loc_id": "IN-018"
+ },
+ {
+  "text": "Is in the next 2 hours a good time to spray my tomato field near Amritsar?",
+  "family": "spray",
+  "intent": "spray",
+  "variables": [
+   "precipitation_probability",
+   "wind_speed"
+  ],
+  "loc_value": "Amritsar",
+  "time_value": "in the next 2 hours",
+  "crop_value": "tomato",
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "Do I need to irrigate my rice in Nagpur this evening?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Nagpur",
+  "time_value": "this evening",
+  "crop_value": "rice",
+  "loc_id": "IN-016"
+ },
+ {
+  "text": "Do I need to irrigate my jowar in Bhubaneswar district today?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Bhubaneswar district",
+  "time_value": "today",
+  "crop_value": "jowar",
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "Do I need to irrigate my onion in Shimla district the next 48 hours?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Shimla district",
+  "time_value": "the next 48 hours",
+  "crop_value": "onion",
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Do I need to irrigate my groundnut in Udaipur district tomorrow afternoon?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Udaipur district",
+  "time_value": "tomorrow afternoon",
+  "crop_value": "groundnut",
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Do I need to irrigate my mango in Hyderabad tonight?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Hyderabad",
+  "time_value": "tonight",
+  "crop_value": "mango",
+  "loc_id": "IN-010"
+ },
+ {
+  "text": "Do I need to irrigate my rice in Siliguri next week?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "evapotranspiration"
+  ],
+  "loc_value": "Siliguri",
+  "time_value": "next week",
+  "crop_value": "rice",
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Should I water the sesame field at Jaipur district early morning or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Jaipur district",
+  "time_value": "early morning",
+  "crop_value": "sesame",
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Should I water the chilli field at Raipur tonight or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Raipur",
+  "time_value": "tonight",
+  "crop_value": "chilli",
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "Should I water the grapes field at Lucknow tomorrow or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "tomorrow",
+  "crop_value": "grapes",
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Should I water the cotton field at Lucknow this evening or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "this evening",
+  "crop_value": "cotton",
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Should I water the grapes field at Indore the next 10 days or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Indore",
+  "time_value": "the next 10 days",
+  "crop_value": "grapes",
+  "loc_id": "IN-019"
+ },
+ {
+  "text": "Should I water the coffee field at Jaipur in the next 2 hours or will it rain?",
+  "family": "irrigate",
+  "intent": "irrigate",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability"
+  ],
+  "loc_value": "Jaipur",
+  "time_value": "in the next 2 hours",
+  "crop_value": "coffee",
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Can I harvest my groundnut in Indore district next 3 days?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Indore district",
+  "time_value": "next 3 days",
+  "crop_value": "groundnut",
+  "loc_id": "IN-019"
+ },
+ {
+  "text": "Can I harvest my mustard in Vijayawada district this weekend?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Vijayawada district",
+  "time_value": "this weekend",
+  "crop_value": "mustard",
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Can I harvest my potato in Kochi the next 48 hours?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Kochi",
+  "time_value": "the next 48 hours",
+  "crop_value": "potato",
+  "loc_id": "IN-013"
+ },
+ {
+  "text": "Can I harvest my potato in Bengaluru today?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Bengaluru",
+  "time_value": "today",
+  "crop_value": "potato",
+  "loc_id": "IN-011"
+ },
+ {
+  "text": "Can I harvest my banana in Varanasi tomorrow?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Varanasi",
+  "time_value": "tomorrow",
+  "crop_value": "banana",
+  "loc_id": "IN-020"
+ },
+ {
+  "text": "Can I harvest my bajra in Guwahati district tomorrow afternoon?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "precipitation_probability",
+   "humidity"
+  ],
+  "loc_value": "Guwahati district",
+  "time_value": "tomorrow afternoon",
+  "crop_value": "bajra",
+  "loc_id": "IN-007"
+ },
+ {
+  "text": "Is it safe to cut and dry gram at Lucknow coming Monday?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Lucknow",
+  "time_value": "coming Monday",
+  "crop_value": "gram",
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Is it safe to cut and dry coconut at Bhubaneswar district late tonight?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Bhubaneswar district",
+  "time_value": "late tonight",
+  "crop_value": "coconut",
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "Is it safe to cut and dry gram at Hyderabad late tonight?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Hyderabad",
+  "time_value": "late tonight",
+  "crop_value": "gram",
+  "loc_id": "IN-010"
+ },
+ {
+  "text": "Is it safe to cut and dry mustard at Vijayawada tomorrow afternoon?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Vijayawada",
+  "time_value": "tomorrow afternoon",
+  "crop_value": "mustard",
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Is it safe to cut and dry sugarcane at Patna late tonight?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Patna",
+  "time_value": "late tonight",
+  "crop_value": "sugarcane",
+  "loc_id": "IN-004"
+ },
+ {
+  "text": "Is it safe to cut and dry groundnut at Shimla district this month?",
+  "family": "harvest",
+  "intent": "harvest",
+  "variables": [
+   "precipitation_amount",
+   "humidity"
+  ],
+  "loc_value": "Shimla district",
+  "time_value": "this month",
+  "crop_value": "groundnut",
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Is day after tomorrow right for sowing coffee in Udaipur district?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Udaipur district",
+  "time_value": "day after tomorrow",
+  "crop_value": "coffee",
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Is early morning right for sowing tomato in Coimbatore district?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Coimbatore district",
+  "time_value": "early morning",
+  "crop_value": "tomato",
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "Is tomorrow right for sowing tea in Shimla?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Shimla",
+  "time_value": "tomorrow",
+  "crop_value": "tea",
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Is tonight right for sowing paddy in Ahmedabad district?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Ahmedabad district",
+  "time_value": "tonight",
+  "crop_value": "paddy",
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Is next 3 days right for sowing soybean in Bengaluru?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Bengaluru",
+  "time_value": "next 3 days",
+  "crop_value": "soybean",
+  "loc_id": "IN-011"
+ },
+ {
+  "text": "Is late tonight right for sowing coconut in Siliguri district?",
+  "family": "sow",
+  "intent": "sow",
+  "variables": [
+   "precipitation_amount",
+   "soil_moisture",
+   "temperature_2m"
+  ],
+  "loc_value": "Siliguri district",
+  "time_value": "late tonight",
+  "crop_value": "coconut",
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Can fishermen go to sea off Ahmedabad tomorrow morning?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Ahmedabad",
+  "time_value": "tomorrow morning",
+  "crop_value": null,
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Can fishermen go to sea off Udaipur late tonight?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Udaipur",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Can fishermen go to sea off Chennai in the next 2 hours?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Chennai",
+  "time_value": "in the next 2 hours",
+  "crop_value": null,
+  "loc_id": "IN-012"
+ },
+ {
+  "text": "Can fishermen go to sea off Jaipur district coming Monday?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Jaipur district",
+  "time_value": "coming Monday",
+  "crop_value": null,
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Can fishermen go to sea off Jaipur district day after tomorrow?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Jaipur district",
+  "time_value": "day after tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Can fishermen go to sea off Amritsar coming Monday?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wind_speed",
+   "wind_gust",
+   "wave_height",
+   "marine_warning"
+  ],
+  "loc_value": "Amritsar",
+  "time_value": "coming Monday",
+  "crop_value": null,
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "Is the sea rough near Ranchi district this month?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Ranchi district",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-018"
+ },
+ {
+  "text": "Is the sea rough near Kolkata tomorrow evening?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Kolkata",
+  "time_value": "tomorrow evening",
+  "crop_value": null,
+  "loc_id": "IN-005"
+ },
+ {
+  "text": "Is the sea rough near Puducherry in the next 2 hours?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "in the next 2 hours",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is the sea rough near Bhubaneswar district in the next 2 hours?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Bhubaneswar district",
+  "time_value": "in the next 2 hours",
+  "crop_value": null,
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "Is the sea rough near Vijayawada next 3 days?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Vijayawada",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Is the sea rough near Puducherry this evening?",
+  "family": "marine",
+  "intent": "marine",
+  "variables": [
+   "wave_height",
+   "wind_speed"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is it safe to drive from Jaipur district this weekend?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Jaipur district",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Is it safe to drive from Bhopal district the next 48 hours?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Bhopal district",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-015"
+ },
+ {
+  "text": "Is it safe to drive from Puducherry this weekend?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is it safe to drive from Vijayawada this evening?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Vijayawada",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Is it safe to drive from Shimla next 3 days?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Shimla",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-009"
+ },
+ {
+  "text": "Is it safe to drive from Coimbatore district late tonight?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "precipitation_amount",
+   "visibility",
+   "wind_gust"
+  ],
+  "loc_value": "Coimbatore district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "Will fog affect travel at Nashik next 3 days?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Nashik",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-001"
+ },
+ {
+  "text": "Will fog affect travel at Indore district tonight?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Indore district",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-019"
+ },
+ {
+  "text": "Will fog affect travel at Varanasi district coming Monday?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Varanasi district",
+  "time_value": "coming Monday",
+  "crop_value": null,
+  "loc_id": "IN-020"
+ },
+ {
+  "text": "Will fog affect travel at Puducherry district in the next 2 hours?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Puducherry district",
+  "time_value": "in the next 2 hours",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Will fog affect travel at Raipur this evening?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Raipur",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "Will fog affect travel at Guwahati district tonight?",
+  "family": "travel",
+  "intent": "travel",
+  "variables": [
+   "visibility",
+   "fog_warning"
+  ],
+  "loc_value": "Guwahati district",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-007"
+ },
+ {
+  "text": "Is there any weather warning for Ahmedabad early morning?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Ahmedabad",
+  "time_value": "early morning",
+  "crop_value": null,
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Is there any weather warning for Ranchi coming Monday?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Ranchi",
+  "time_value": "coming Monday",
+  "crop_value": null,
+  "loc_id": "IN-018"
+ },
+ {
+  "text": "Is there any weather warning for Lucknow district this month?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Lucknow district",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-003"
+ },
+ {
+  "text": "Is there any weather warning for Vijayawada the next 48 hours?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Vijayawada",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-022"
+ },
+ {
+  "text": "Is there any weather warning for Hyderabad district next week?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Hyderabad district",
+  "time_value": "next week",
+  "crop_value": null,
+  "loc_id": "IN-010"
+ },
+ {
+  "text": "Is there any weather warning for Udaipur district late tonight?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "thunderstorm_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Udaipur district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Has IMD issued any alert for Guwahati district this evening?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Guwahati district",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-007"
+ },
+ {
+  "text": "Has IMD issued any alert for Siliguri this month?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Siliguri",
+  "time_value": "this month",
+  "crop_value": null,
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Has IMD issued any alert for Hyderabad district late tonight?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Hyderabad district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-010"
+ },
+ {
+  "text": "Has IMD issued any alert for Nashik district the next 48 hours?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Nashik district",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-001"
+ },
+ {
+  "text": "Has IMD issued any alert for Ahmedabad district over the next 6 hours?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Ahmedabad district",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Has IMD issued any alert for Bhopal early morning?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "heavy_rain_warning",
+   "cyclone_warning"
+  ],
+  "loc_value": "Bhopal",
+  "time_value": "early morning",
+  "crop_value": null,
+  "loc_id": "IN-015"
+ },
+ {
+  "text": "Is a cyclone expected near Puducherry tomorrow?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is a cyclone expected near Raipur district tomorrow?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Raipur district",
+  "time_value": "tomorrow",
+  "crop_value": null,
+  "loc_id": "IN-017"
+ },
+ {
+  "text": "Is a cyclone expected near Dehradun the next 48 hours?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Dehradun",
+  "time_value": "the next 48 hours",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ },
+ {
+  "text": "Is a cyclone expected near Puducherry tomorrow afternoon?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Puducherry",
+  "time_value": "tomorrow afternoon",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is a cyclone expected near Jaipur the rest of the week?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Jaipur",
+  "time_value": "the rest of the week",
+  "crop_value": null,
+  "loc_id": "IN-002"
+ },
+ {
+  "text": "Is a cyclone expected near Dehradun over the next 6 hours?",
+  "family": "warning",
+  "intent": "warning_check",
+  "variables": [
+   "cyclone_warning"
+  ],
+  "loc_value": "Dehradun",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ },
+ {
+  "text": "Will there be a thunderstorm in Coimbatore this evening?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Coimbatore",
+  "time_value": "this evening",
+  "crop_value": null,
+  "loc_id": "IN-021"
+ },
+ {
+  "text": "Will there be a thunderstorm in Kochi tomorrow afternoon?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Kochi",
+  "time_value": "tomorrow afternoon",
+  "crop_value": null,
+  "loc_id": "IN-013"
+ },
+ {
+  "text": "Will there be a thunderstorm in Udaipur tomorrow morning?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Udaipur",
+  "time_value": "tomorrow morning",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Will there be a thunderstorm in Ahmedabad tomorrow evening?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Ahmedabad",
+  "time_value": "tomorrow evening",
+  "crop_value": null,
+  "loc_id": "IN-014"
+ },
+ {
+  "text": "Will there be a thunderstorm in Udaipur district tonight?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Udaipur district",
+  "time_value": "tonight",
+  "crop_value": null,
+  "loc_id": "IN-023"
+ },
+ {
+  "text": "Will there be a thunderstorm in Amritsar over the next 6 hours?",
+  "family": "storm",
+  "intent": "none",
+  "variables": [
+   "thunderstorm_probability",
+   "thunderstorm_warning"
+  ],
+  "loc_value": "Amritsar",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-008"
+ },
+ {
+  "text": "Is a heat wave expected in Puducherry district early morning?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Puducherry district",
+  "time_value": "early morning",
+  "crop_value": null,
+  "loc_id": "IN-026"
+ },
+ {
+  "text": "Is a heat wave expected in Varanasi district over the next 6 hours?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Varanasi district",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-020"
+ },
+ {
+  "text": "Is a heat wave expected in Siliguri district late tonight?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Siliguri district",
+  "time_value": "late tonight",
+  "crop_value": null,
+  "loc_id": "IN-024"
+ },
+ {
+  "text": "Is a heat wave expected in Bhubaneswar district over the next 6 hours?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Bhubaneswar district",
+  "time_value": "over the next 6 hours",
+  "crop_value": null,
+  "loc_id": "IN-006"
+ },
+ {
+  "text": "Is a heat wave expected in Dehradun next 3 days?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Dehradun",
+  "time_value": "next 3 days",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ },
+ {
+  "text": "Is a heat wave expected in Dehradun district this weekend?",
+  "family": "heat",
+  "intent": "warning_check",
+  "variables": [
+   "heat_warning",
+   "temperature_max"
+  ],
+  "loc_value": "Dehradun district",
+  "time_value": "this weekend",
+  "crop_value": null,
+  "loc_id": "IN-025"
+ }
+]
