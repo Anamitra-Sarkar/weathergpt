@@ -130,6 +130,13 @@ end-to-end registry verification against it.
   has no gradient in the shape, so training samples through `Gamma.rsample` and
   inference uses `gammainc`.
 
+## M3 / D4 — history: three deferred attempts before the corpus that actually worked
+
+> Superseded below ("## M3 — intent + slot parser") once D4 was generated
+> directly with no external API. Kept as the record of what was tried and why
+> each attempt failed, since the diagnoses are real and the fixes made along
+> the way (dropped model, backoff timing, batching) are still in the code.
+
 ## M3 / D4 — deferred, with root cause
 
 D4 (multilingual query corpus) failed to complete across five configurations in
@@ -233,80 +240,6 @@ dedup, split by template family + location) the original pipeline used. It is
 ready to run the moment a corpus exists by any means, including a future
 muse-spark attempt with a much smaller per-call ask (e.g. 10-20 rows per call
 instead of ~300 in one shot).
-
-## D4 / M3 — resolved: hand-generated directly, no external API
-
-Per direction ("generate it yourself, don't hit any rate limit"), abandoned all
-three external-generation approaches and built the corpus with pure Python
-template substitution using vocabulary tables written directly (Claude's own
-knowledge of the 13 languages, composed once per phrase/template and reused,
-rather than free-form per-row translation trusted to an LLM call). Zero
-external API calls, so no rate limit of any kind applies.
-
-**Result: 2184 rows, 14 languages (13 + English) at exactly 156 rows each,
-0 rejected by independent re-verification, 0 duplicate rows, all 8 dataset
-contracts pass.** Majority-intent baseline is 42.3% (`none`), a real number —
-not the 85.75% degenerate distribution the original corpus had.
-
-The substring-correctness guarantee holds by construction, not by trust: each
-phrase (20 time expressions, 27 crops, 26 city names) has a fixed rendering per
-language, and each of the 26 sentence templates has a fixed per-language form
-with `{loc}/{time}/{crop}` placeholders — so a translated slot value is
-*always* a literal substring of the composed sentence, verified twice (once at
-generation, once independently after merging).
-
-Corpus and vocabulary tables backed up at `backup/d4_corpus/`. M3 training
-launched immediately after import.
-
-## M3 — intent + slot parser  ✅
-
-JointBERT on `google/muril-base-cased`, trained on the hand-generated D4 corpus
-above (2172 rows after final split). Three real bugs surfaced getting a clean
-run, each one destroying a completed or near-complete training run before this
-session's fixes:
-
-1. **`ModuleNotFoundError: pydantic`** — the rule-parser baseline import (used
-   only for comparison, computed *after* training) needed `pydantic`, which
-   `TRAIN_IMAGE` never installed. A fully-trained model (epoch 10/10, val
-   intent F1 1.0) was lost to this before it could save.
-2. **An unexplained "user stopped from CLI"** on the next attempt, with no
-   process on this side that could have issued it.
-3. **An off-by-one in the LR scheduler**: `steps_per_epoch` was computed by
-   floor division (`len(train) // batch_size`), but the training loop's
-   `range(0, len(order), batch_size)` always emits one more partial batch when
-   the row count isn't an exact multiple — `OneCycleLR` hard-raises once
-   stepped past its declared total. Caught a training run 9 epochs into 10.
-
-Fixed all three: `TRAIN_IMAGE` now installs `pydantic`+`pyyaml`; the checkpoint
-now saves and commits to the volume *before* the baseline comparison runs, with
-that comparison wrapped in try/except so it can never again take a trained
-model down with it; and the step count now uses `math.ceil`.
-
-**Held-out test (unseen template families `{sow, heat, storm}` AND unseen
-districts — 643 rows):**
-
-| metric | M3 | baseline |
-|---|---|---|
-| intent macro-F1 | **0.670** | rule parser 0.119 / majority 0.089 |
-| intent accuracy | **0.715** | rule parser 0.462 / majority 0.456 |
-| slot F1 (seqeval) | **0.996** | rule parser: not supported at all |
-| variable multi-label micro-F1 | 0.094 | — |
-
-Intent macro-F1 is **5.6× the rule-based retrieval planner it replaces**.
-Slot extraction generalizes almost perfectly to sentence patterns and districts
-the model never trained on, across all 13 languages.
-
-**The variable multi-label head is a genuine, documented weak point** — not a
-bug. Of 46 canonical variables in the label space, only 19 ever appear as a
-positive label across the 26 templates, several with fewer than 10 positive
-examples total. The admission gate correctly does not gate on this head (only
-intent macro-F1 and slot F1, which is what M3 is actually used for downstream);
-fixing it properly needs more template diversity, out of this session's scope.
-
-**Real-world verification** (`modal_jobs/real_world_test.py` +
-`modal_jobs/verify_package.py`, genuinely novel queries never in any corpus):
-correctly classified intent on 6/6 queries spanning English, Hinglish, and
-Hindi (Devanagari), including correct location-span extraction on Hindi text.
 
 ## Final status: all 5 models trained, gate-verified, end-to-end tested
 
