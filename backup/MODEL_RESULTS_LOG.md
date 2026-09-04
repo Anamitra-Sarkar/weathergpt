@@ -283,6 +283,93 @@ slots are the two outputs that are actually good.
 Passes the registry admission gate (intent macro-F1 and slot F1 both clear
 their thresholds).
 
+## M3 v2 — retrained on a wider corpus, and a real bug found and fixed in the process
+
+Prompted by "quality as specified" — the v1 variable head above (micro-F1
+0.094) was flagged as a known weakness, not fixed. Two changes were made
+before retraining:
+
+1. **D4 v2 corpus** (`backup/d4_v2/d4v2_corpus.jsonl.gz`, sha256
+   `cb2ee6c4e1d8...`, 4,027 rows): 13 more template families added
+   (`feels_like`, `cloud`, `cold_wave`, `dust_storm`, `flood`, `hail`,
+   `rain_rate`, `distribution`, `snow`, `snow_depth`, `wind_dir`, `sea_temp`,
+   `lightning`), covering 39 templates / 28 unique families across 127 real
+   geocoded Indian locations (up from ~8 locations that actually appeared in
+   the v1 corpus), translated into the same 13 Indian languages. Three of the
+   new templates (`rain_rate`, `snow_depth`, `sea_temp`) initially produced
+   **zero rows** — the template strings never included `{time}`, but the
+   base-row builder unconditionally required a `time_value` substring match,
+   so every row from those 3 families was silently dropped. Fixed in
+   `build_queries.py`, confirmed with a direct row-count check before
+   proceeding, not just trusting the fix compiled.
+
+2. **A real training bug, found by re-checking rather than trusting the
+   first retrain's numbers.** The first v2 run (on the same wider corpus)
+   reported `test_heldout variable_micro_f1 = 0.00079` — **~120× worse than
+   v1**, not better. Root cause in `train_intent.py`: the per-epoch
+   checkpoint-selection score was `(intent_macro_f1 + slot_f1) / 2`, which
+   never included the variable head, and the variable head's loss was plain
+   unweighted `binary_cross_entropy_with_logits` against 46 canonical-variable
+   classes with 1–3 positives per row — a textbook unstable-imbalance setup
+   whose degenerate optimum is "predict nothing." The per-epoch log showed
+   `val_var_micro_f1` declining monotonically (0.081 → 0.0) every epoch while
+   intent+slot kept "improving" past it, so the selection score kept
+   preferring later, more-collapsed checkpoints. Fixed two things: (a)
+   per-class `pos_weight = clip(neg/pos, 1, 25)` on the variable BCE loss, (b)
+   `variable_micro_f1` added as a third term in the checkpoint-selection
+   score so a checkpoint can't win by discarding it. Retrained from scratch.
+
+| | v1 (test_heldout) | v2 (test_heldout, fixed) |
+|---|---|---|
+| intent macro-F1 | 0.670 | **0.746** |
+| intent accuracy | 0.715 | 0.836 |
+| slot F1 | 0.996 | 0.988 (still near-perfect) |
+| variable micro-F1 | 0.094 | **0.170** (1.8×) |
+| variable macro-F1 | 0.009 | **0.120** (13×) |
+
+Baselines on the v2 test set: majority-class intent macro-F1 0.084,
+rule-based parser 0.166 — the retrained model beats the rule parser it
+replaces by 4.5×.
+
+**Still an honest weakness, not resolved**: `variable_macro_f1 = 0.120` means
+most of the 46 canonical variables still have thin or zero support even after
+widening the corpus. `docs/MODEL_REGISTRY_INTEGRATION.md` Site 5 already
+tells `app/` never to trust M3's `variables` output for retrieval pruning —
+that guidance stands unchanged; only `intent` and the BIO slots (`LOC`,
+`TIME`, `CROP`) are validated for real use. Sample outputs from
+`verify_package.py` after this retrain still show wrong variable guesses on
+individual rows (e.g. a rain question predicting `temperature_min` instead of
+`precipitation_amount`) even though the aggregate metric improved — the
+improvement is real but the head is not reliable per-query.
+
+Passes the registry admission gate: `field_mapper loaded=True`,
+`intent loaded=True` (macro-F1 0.746 vs rule parser 0.166, slot F1 0.988),
+`mos/calibration/trust_ranker loaded=True` — 10/10 `verify_package.py` checks
+pass with this checkpoint.
+
+## M1 reviewed, not retrained
+
+Checked against the "retrain if it needs it" instruction. Served model
+(`m1_field_mapper_v1`, `intfloat/multilingual-e5-base`) has
+`test_zeroshot_macro_f1 = 0.743` vs baselines of 0.160 (dict registry) and
+0.017 (majority class) — a 4.6× real improvement, holding on schema families
+never trained on (WRF/NCEP/IMD/BUFR vs the CF/GRIB2/ERA5/CAP it trained on).
+Known soft spots: `test_zeroshot_level_accuracy = 0.567` (vertical-level
+classification is the harder sub-task) and `wrf_registry` source macro-F1
+`0.484` (still clears the dict baseline's 0.16 by 3×, just weaker than the
+other four source families). Left as-is rather than retrained: closing this
+gap needs more level-labeled training rows (a D3 corpus rebuild), not a
+retrain on the same data, and there was no evidence of a bug analogous to
+M3's checkpoint-selection defect. (A separate `m1_field_mapper_v1_large`
+checkpoint exists on the volume from an earlier experiment with
+`intfloat/multilingual-e5-large` — it is **not** wired into the registry,
+which hardcodes `m1_field_mapper_v1`; mentioned here only so it isn't
+mistaken for the served model.)
+
+M2, M4, M5 were not touched this round — no weakness was flagged for them
+in the earlier verification pass, and `verify_package.py` continues to show
+all three loaded with positive skill over their respective baselines.
+
 ## Process note: a forked subagent exceeded its scope
 
 While translating D4 into 13 languages via parallel forks, at least one fork

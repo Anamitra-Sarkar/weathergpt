@@ -136,6 +136,18 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
         np.where(counts > 0, len(splits["train"]) / (len(INTENTS) * np.maximum(counts, 1)), 0.0),
         dtype=torch.float32, device=device)
 
+    # Each row carries 1-3 positive labels out of 46 canonical variables, so
+    # unweighted BCE has a stable degenerate optimum: predict all-negative.
+    # That optimum is invisible to the epoch-selection score below unless the
+    # loss itself is rebalanced, so pos_weight = neg/pos per class (capped, so
+    # a near-never-seen class doesn't get an unstable multi-hundred weight).
+    var_matrix = np.stack(splits["train"]["y_variables"].to_numpy())
+    pos_counts = var_matrix.sum(axis=0)
+    neg_counts = len(var_matrix) - pos_counts
+    var_pos_weight = torch.tensor(
+        np.clip(np.where(pos_counts > 0, neg_counts / np.maximum(pos_counts, 1), 1.0), 1.0, 25.0),
+        dtype=torch.float32, device=device)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     # ceil, not floor: range(0, n, batch_size) always emits a final partial
     # batch when n is not a multiple of batch_size, so floor division undercounts
@@ -216,7 +228,8 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
             loss = F.cross_entropy(intent_logits, y_intent, weight=intent_weights)
             loss = loss + F.cross_entropy(slot_logits.reshape(-1, len(BIO_LABELS)),
                                           labels.reshape(-1), ignore_index=-100)
-            loss = loss + 0.5 * F.binary_cross_entropy_with_logits(variable_logits, y_variables)
+            loss = loss + F.binary_cross_entropy_with_logits(
+                variable_logits, y_variables, pos_weight=var_pos_weight)
             optimizer.zero_grad()
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
@@ -225,7 +238,14 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
             total += float(loss) * len(index)
             seen += len(index)
         metrics = evaluate("val")
-        score = (metrics["intent_macro_f1"] + metrics["slot_f1"]) / 2
+        # intent_macro_f1 and slot_f1 both saturate near 1.0 within a few
+        # epochs; a score that ignores the variable head lets it silently
+        # collapse to all-negative after saturation while "best" keeps
+        # advancing on the other two -- confirmed happening in a real run
+        # (val_var_micro_f1 0.081 -> 0.0 monotonically while intent+slot
+        # score kept improving). variable_micro_f1 must be a checkpoint vote.
+        score = (metrics["intent_macro_f1"] + metrics["slot_f1"]
+                + metrics["variable_micro_f1"]) / 3
         print(f"[m3] epoch {epoch + 1}/{epochs} loss={total / max(seen, 1):.4f} "
               f"val_intent_f1={metrics['intent_macro_f1']:.4f} "
               f"val_slot_f1={metrics['slot_f1']:.4f} "
