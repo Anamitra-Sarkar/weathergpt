@@ -235,7 +235,6 @@ def train(epochs: int = 40, batch_size: int = 8192, lr: float = 5e-4, seed: int 
 
     for variable, family in TARGETS:
         X, y, names, members, keep = build_features(frame, variable)
-        del names  # kept for interface symmetry with M2, unused here
         tr = masks["train"] & keep
         va = masks["val"] & keep
         te = masks["test"] & keep
