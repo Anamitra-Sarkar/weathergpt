@@ -416,5 +416,6 @@ def test_precipitation_interval_low_cannot_be_negative():
 
     source = open("weathergpt_models/mos.py").read()
     assert re.search(
-        r'if variable in \("precipitation",\):\s*\n\s*#.*\n\s*interval_low = max\(0\.0, interval_low\)',
+        r'if variable in \("precipitation",\):(?:\s*\n\s*#.*)*\s*\n\s*'
+        r'interval_low = max\(0\.0, interval_low\)',
         source), "the conformal interval_low for precipitation must be re-clamped to zero"
