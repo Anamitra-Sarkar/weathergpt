@@ -44,6 +44,8 @@ TRAIN_IMAGE = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "torch==2.5.1",
+        "pydantic==2.10.3",
+        "pyyaml==6.0.2",
         "transformers==4.46.3",
         "tokenizers==0.20.3",
         "huggingface-hub==0.26.5",

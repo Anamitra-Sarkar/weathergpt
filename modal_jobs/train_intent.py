@@ -246,40 +246,10 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
         per_language[language] = evaluate("test")
     splits["test"], cached["test"] = original, original_cache
 
-    # --- baselines: the rule parser this replaces ---------------------------
-    from app.orchestrator.retrieval_planner import build_retrieval_plan
-
-    decision_to_intent = {"pesticide_spraying": "spray", "irrigation": "irrigate",
-                          "harvest": "harvest", "marine": "marine", "travel": "travel",
-                          "sowing": "sow", None: "none", "": "none"}
-
-    def rule_baseline(part) -> dict:
-        predicted = []
-        for _, row in part.iterrows():
-            try:
-                plan = build_retrieval_plan(row["text"], "short")
-                context = getattr(plan, "decision_context", None)
-            except Exception:
-                context = None
-            name = decision_to_intent.get(context, "none")
-            predicted.append(intent_index.get(name, intent_index["none"]))
-        gold = part["y_intent"].to_numpy()
-        return {
-            "intent_accuracy": float(np.mean(np.array(predicted) == gold)),
-            "intent_macro_f1": float(f1_score(gold, predicted, average="macro", zero_division=0)),
-        }
-
-    majority = int(np.bincount(splits["train"]["y_intent"].to_numpy()).argmax())
-    baselines = {
-        "rule_based_retrieval_planner_test": rule_baseline(splits["test"]),
-        "majority_class_test": {
-            "intent_accuracy": float(np.mean(splits["test"]["y_intent"].to_numpy() == majority)),
-            "intent_macro_f1": float(f1_score(splits["test"]["y_intent"].to_numpy(),
-                                              np.full(len(splits["test"]), majority),
-                                              average="macro", zero_division=0)),
-        },
-    }
-
+    # --- persist the checkpoint BEFORE anything that is not the training loop
+    # itself. A dependency missing from only the baseline computation (this
+    # happened once: pydantic, needed by the rule-parser import, was absent
+    # from TRAIN_IMAGE) must never be able to discard ten epochs of GPU work.
     out_dir = f"{MODEL_DIR}/{ALGORITHM_VERSION}"
     os.makedirs(out_dir, exist_ok=True)
     torch.save({"state_dict": model.state_dict(), "base_model": base_model}, f"{out_dir}/model.pt")
@@ -288,6 +258,49 @@ def train(base_model: str = "google/muril-base-cased", epochs: int = 8,
         json.dump({"base_model": base_model, "max_len": MAX_LEN, "intents": list(INTENTS),
                    "bio_labels": list(BIO_LABELS),
                    "canonical_variables": list(CANONICAL_VARIABLES)}, handle, indent=2)
+    from modal_jobs.common import MODEL_VOL
+    MODEL_VOL.commit()
+    print(f"[m3] checkpoint saved and committed before computing baselines")
+
+    # --- baselines: the rule parser this replaces -----------------------------
+    majority = int(np.bincount(splits["train"]["y_intent"].to_numpy()).argmax())
+    baselines = {
+        "majority_class_test": {
+            "intent_accuracy": float(np.mean(splits["test"]["y_intent"].to_numpy() == majority)),
+            "intent_macro_f1": float(f1_score(splits["test"]["y_intent"].to_numpy(),
+                                              np.full(len(splits["test"]), majority),
+                                              average="macro", zero_division=0)),
+        },
+    }
+    try:
+        from app.orchestrator.retrieval_planner import build_retrieval_plan
+
+        decision_to_intent = {"pesticide_spraying": "spray", "irrigation": "irrigate",
+                              "harvest": "harvest", "marine": "marine", "travel": "travel",
+                              "sowing": "sow", None: "none", "": "none"}
+
+        def rule_baseline(part) -> dict:
+            predicted = []
+            for _, row in part.iterrows():
+                try:
+                    plan = build_retrieval_plan(row["text"], "short")
+                    context = getattr(plan, "decision_context", None)
+                except Exception:
+                    context = None
+                name = decision_to_intent.get(context, "none")
+                predicted.append(intent_index.get(name, intent_index["none"]))
+            gold = part["y_intent"].to_numpy()
+            return {
+                "intent_accuracy": float(np.mean(np.array(predicted) == gold)),
+                "intent_macro_f1": float(f1_score(gold, predicted, average="macro",
+                                                  zero_division=0)),
+            }
+
+        baselines["rule_based_retrieval_planner_test"] = rule_baseline(splits["test"])
+    except Exception as exc:
+        print(f"[m3] WARNING: rule-based baseline failed ({exc}); "
+              f"the checkpoint above is unaffected")
+        baselines["rule_based_retrieval_planner_test"] = {"error": str(exc)}
 
     metrics = {
         "algorithm_version": ALGORITHM_VERSION,
