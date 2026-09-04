@@ -37,14 +37,22 @@ class _DistributionalHead:
 class ProbabilityCalibrator:
     """Turns ensemble spread into a probability whose reliability was measured.
 
-    Precipitation uses a hurdle model: an explicit probability that the hour is
-    wet at all, times a censored shifted gamma for how much falls if it is.  The
-    two questions a rainfall forecast is really answering are separated, and the
-    predictive distribution gets a genuine atom at zero — without which a
+    Precipitation only.  A hurdle model: an explicit probability that the hour
+    is wet at all, times a censored shifted gamma for how much falls if it is.
+    The two questions a rainfall forecast is really answering are separated, and
+    the predictive distribution gets a genuine atom at zero -- without which a
     continuous distribution loses to the raw ensemble on the dry hours, which
     are most of them.  Fitted by minimising CRPS, then refined per threshold by
-    isotonic regression so the reliability curve is monotone.  Temperature and
-    wind use a Gaussian EMOS head.
+    isotonic regression so the reliability curve is monotone.
+
+    Temperature and wind are not served here.  A first version fit Gaussian EMOS
+    heads for both and measured them losing to the raw four-model ensemble's
+    fair CRPS by -37.9% and -24.7% -- worse even at the first training epoch,
+    which is what a discrete four-point ensemble drawn from genuinely skillful
+    models does to a two-parameter symmetric summary of it.  M2 already beats
+    that same baseline on both variables using the real forecast distribution;
+    use `registry.mos` for a corrected temperature or wind value and its
+    interval.
 
     Reliability curves and Brier skill scores per threshold are in
     `metrics.json`, measured on locations the model never trained on.
