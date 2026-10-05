@@ -1,0 +1,16 @@
+{
+  "id": "arkosarkarhehe/weathergpt-models-demo",
+  "title": "WeatherGPT Models Demo",
+  "code_file": "weathergpt_models_demo.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": ["weather", "meteorology", "machine-learning", "india"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

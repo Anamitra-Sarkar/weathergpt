@@ -23,7 +23,7 @@ registry = ModelRegistry.from_hub("Arko007/weathergpt-models")
 # ModelRegistry.from_dir("/path/to/downloaded/bundle")
 ```
 
-Published 2026-09-04, private repo (2.16 GB, all 5 gate-passing models).
+Published 2026-09-04, public repo (2.16 GB, all 5 gate-passing models).
 `from_hub` needs an HF token with read access to that repo — same
 authentication `huggingface_hub` always uses (`HF_TOKEN` env var or
 `huggingface-cli login`), ask for read access to be added to the repo if

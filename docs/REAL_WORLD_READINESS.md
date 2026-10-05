@@ -193,20 +193,19 @@ a provider.
 ## Open items not covered by this report
 
 - **Update 2026-09-04: published.** All 5 gate-passing models are now on
-  the Hugging Face Hub at `Arko007/weathergpt-models` (private repo, 2.16 GB,
+  the Hugging Face Hub at `Arko007/weathergpt-models` (public repo, 2.16 GB,
   model card auto-generated from each `metrics.json` — nothing typed by
   hand). `app/` can now load them with:
   ```python
   from weathergpt_models import ModelRegistry
   registry = ModelRegistry.from_hub("Arko007/weathergpt-models")
   ```
-  This needs read access to the private repo (an HF token with read scope
-  on that repo, passed the same way `huggingface_hub` normally authenticates
-  — `HF_TOKEN` env var or `huggingface-cli login`). The remaining blocker is
+  The repo is public, so no token is needed to read it (a token is only
+  needed to publish). The remaining blocker is
   purely `app/`-side: no code under `app/` calls `ModelRegistry` yet — see
   `docs/MODEL_REGISTRY_INTEGRATION.md` for the exact integration points.
   Reproduce or re-publish with `modal run modal_jobs/export_models.py
-  --repo-id Arko007/weathergpt-models --private` (uses the `arko007-hf-token`
+  --repo-id Arko007/weathergpt-models` (uses the `arko007-hf-token`
   Modal secret; never pass a token on the command line or commit one to the
   repo).
 - **No labelled real-world eval set exists yet.** This report is a smoke

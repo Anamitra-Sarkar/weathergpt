@@ -40,13 +40,32 @@ def _card(bundle: dict, repo_id: str) -> str:
         "`metrics.json`; none was typed by hand.", "",
         "## Install", "",
         "```bash",
-        "pip install weathergpt-models  # or: pip install -e . from the repo's",
-        "                                # weathergpt_models/ directory if the",
-        "                                # package isn't on PyPI yet",
+        "# the package is the `weathergpt_models/` directory of the project repo",
+        "# (it is NOT published on PyPI and has no installer): clone and import it",
+        "git clone https://github.com/Anamitra-Sarkar/weathergpt",
+        "cd weathergpt && pip install numpy torch transformers lightgbm scikit-learn huggingface_hub",
         "```", "",
         "The package depends only on `numpy`, `torch`, `transformers`,",
         "`lightgbm` and `scikit-learn` — it does not import FastAPI or anything",
         "from the serving app, so it can be used standalone.", "",
+        "## Training data at a glance", "",
+        "Full detail (feature lists, exact split logic, dataset caveats) is in "
+        "each model's own section below and in the linked dataset card — this is "
+        "just the numbers in one place.", "",
+        "| model | train | val | test | unit |",
+        "|---|---|---|---|---|",
+        f"| M1 field_mapper | {_fmt(bundle.get('field_mapper', {}).get('metrics', {}).get('n_train'))} "
+        f"| {_fmt(bundle.get('field_mapper', {}).get('metrics', {}).get('n_val'))} "
+        f"| {_fmt(bundle.get('field_mapper', {}).get('metrics', {}).get('n_test'))} "
+        "| rows (test = zero-shot, unseen source tables) |",
+        "| M2 mos | 5,388,048 | 2,308,464 | 565,800 | rows (test = spatially held-out locations) |",
+        f"| M3 intent | {_fmt(bundle.get('intent', {}).get('metrics', {}).get('n_train'))} "
+        f"| {_fmt(bundle.get('intent', {}).get('metrics', {}).get('n_val'))} "
+        f"| {_fmt(bundle.get('intent', {}).get('metrics', {}).get('n_test'))} "
+        "| rows (test = held-out template families AND districts) |",
+        "| M4 calibration | 5,388,048 | 2,308,464 | 565,800 | rows (precipitation only) |",
+        "| M5 trust_ranker | 400,000 | 100,000 | 100,000 | groups (subsampled from ~4.6M/2.0M/0.5M available; test = spatially held-out) |",
+        "", "",
         "## Quickstart", "",
         "```python",
         "from weathergpt_models import ModelRegistry",
@@ -113,6 +132,12 @@ def _card(bundle: dict, repo_id: str) -> str:
         "for each model) is in `docs/MODEL_REGISTRY_INTEGRATION.md` and",
         "`docs/REAL_WORLD_READINESS.md` in the source repo, not duplicated here",
         "since those get updated as real query traffic accumulates.", "",
+        "The multi-model-forecast-vs-truth training data behind M2, M4 and M5 is "
+        "itself published at "
+        "[`Arko007/weathergpt-d1-mos-dataset`]"
+        "(https://huggingface.co/datasets/Arko007/weathergpt-d1-mos-dataset) — see "
+        "that dataset card for the full column list and how the splits were built. "
+        "Real sample counts for every model are in each section below.", "",
         "Each model is gated on beating the baseline it replaces. An artifact",
         "that cannot prove its provenance, or that does not beat its baseline,",
         "is refused at load time and the caller falls back to a deterministic",
@@ -130,7 +155,47 @@ def _card(bundle: dict, repo_id: str) -> str:
                   f"- admission gate: **{'PASS' if block['gate_ok'] else 'REFUSED'}** — {block['gate_reason']}",
                   ""]
 
+        if name in ("mos", "calibration"):
+            lines += [
+                "- **training data**: [`Arko007/weathergpt-d1-mos-dataset`]"
+                "(https://huggingface.co/datasets/Arko007/weathergpt-d1-mos-dataset) — "
+                "9,582,912 rows, 127 real Indian locations, 4 NWP models "
+                "(GFS/ECMWF/ICON/GEM) vs. ERA5-Land truth, 30 input features per row "
+                "(see the dataset card for the exact feature list). Split: chronological "
+                "70% cutoff for train/val, plus 20% of locations held out entirely for "
+                "the spatial test set.",
+                "- **rows actually used**" + (
+                    " (precipitation)" if name == "calibration" else " (identical across "
+                    "temperature_2m/precipitation/wind_speed_10m since it's the same row "
+                    "set reshaped per target)") +
+                ": train **5,388,048** / val **2,308,464** / test (spatially held out) "
+                "**565,800**.", ""]
+        elif name == "trust_ranker":
+            lines += [
+                "- **training data**: the same "
+                "[`Arko007/weathergpt-d1-mos-dataset`]"
+                "(https://huggingface.co/datasets/Arko007/weathergpt-d1-mos-dataset), "
+                "reshaped into ranking groups — one group per (location, valid time, "
+                "lead) with the 4 NWP sources as candidates to rank.",
+                "- **groups actually used** (per variable, identical shape for "
+                "temperature_2m/precipitation/wind_speed_10m): train **400,000**, "
+                "val **100,000**, test (spatially held out) **100,000** — each "
+                "subsampled (`max_groups=400,000`, val/test at 1/4 that) from a much "
+                "larger pool of complete 4-source groups (roughly 4.6-4.7M for train, "
+                "1.9-2.0M for val, 0.48-0.49M for test, per variable) for tractability; "
+                "ranking needs whole groups, not individual rows, so this is a group "
+                "count, not a row count.", ""]
+
         if name == "field_mapper":
+            lines += [
+                "- **training data**: `d3_authoritative_parameter_tables` — real "
+                "parameter tables (CF Standard Names, ECMWF/GRIB2 definitions, NOAA "
+                "NCEP GFS `.idx` inventories, the WRF Registry, WMO BUFR, Open-Meteo "
+                "and IMD field names), not a synthetic/augmented list.",
+                f"- **rows**: train **{_fmt(metrics.get('n_train'))}** / "
+                f"val **{_fmt(metrics.get('n_val'))}** / "
+                f"test (zero-shot, unseen source tables) "
+                f"**{_fmt(metrics.get('n_test'))}**.", ""]
             baselines = metrics.get("baselines", {})
             lines += ["| metric | model | dict registry | majority |", "|---|---|---|---|",
                       f"| zero-shot macro-F1 | **{_fmt(metrics.get('test_zeroshot_macro_f1'))}** | "
@@ -174,6 +239,16 @@ def _card(bundle: dict, repo_id: str) -> str:
         elif name == "intent":
             test = metrics.get("test_heldout", {})
             baseline = metrics.get("baselines", {}).get("rule_based_retrieval_planner_test", {})
+            lines += [
+                "- **training data**: `d4_multilingual_templated_queries_with_exact_slot_spans` "
+                "— template-generated queries across 39 template families, 127 real "
+                "Indian locations, translated into 13 Indian languages plus English "
+                "(exact BIO slot spans computed from character offsets, never "
+                "translation-model-reported).",
+                f"- **rows**: train **{_fmt(metrics.get('n_train'))}** / "
+                f"val **{_fmt(metrics.get('n_val'))}** / "
+                f"test (held-out template families AND districts) "
+                f"**{_fmt(metrics.get('n_test'))}**.", ""]
             lines += ["| metric | model | rule parser |", "|---|---|---|",
                       f"| intent macro-F1 | **{_fmt(test.get('intent_macro_f1'))}** | "
                       f"{_fmt(baseline.get('intent_macro_f1'))} |",
