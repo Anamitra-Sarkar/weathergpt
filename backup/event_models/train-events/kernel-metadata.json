@@ -1,0 +1,33 @@
+{
+  "id": "anamitrasarkar007/weathergpt-train-events",
+  "title": "WeatherGPT train-events",
+  "code_file": "train-events.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "keywords": [
+    "weather",
+    "india"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [
+    "anamitrasarkar007/weathergpt-truth-collect",
+    "anamitrasarkar007/weathergpt-gfs-s1",
+    "anamitrasarkar007/weathergpt-gfs-s2",
+    "anamitrasarkar007/weathergpt-gfs-s2b",
+    "anamitrasarkar007/weathergpt-gfs-s3",
+    "anamitrasarkar007/weathergpt-gfs-s4",
+    "anamitrasarkar007/weathergpt-gfs-s5",
+    "anamitrasarkar007/weathergpt-gfs-l1",
+    "anamitrasarkar007/weathergpt-gfs-l2",
+    "anamitrasarkar007/weathergpt-ext-e1",
+    "anamitrasarkar007/weathergpt-ext-e2",
+    "anamitrasarkar007/weathergpt-ext-e3",
+    "anamitrasarkar007/weathergpt-ext-e4"
+  ],
+  "competition_sources": [],
+  "model_sources": []
+}

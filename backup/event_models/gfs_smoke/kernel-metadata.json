@@ -1,0 +1,16 @@
+{
+  "id": "anamitrasarkar007/weathergpt-gfs-smoke",
+  "title": "WeatherGPT GFS Smoke",
+  "code_file": "collect_gfs_smoke.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": ["weather", "india"],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

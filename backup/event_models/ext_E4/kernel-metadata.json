@@ -1,0 +1,19 @@
+{
+  "id": "anamitrasarkar007/weathergpt-ext-e4",
+  "title": "WeatherGPT Ext E4",
+  "code_file": "collect_gfs_ext_E4.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [
+    "weather",
+    "india"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}
