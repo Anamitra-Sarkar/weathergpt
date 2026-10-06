@@ -1,0 +1,23 @@
+{
+  "id": "anamitrasarkar007/weathergpt-publish-hf",
+  "title": "WeatherGPT publish-hf",
+  "code_file": "publish-hf.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [
+    "weather",
+    "india"
+  ],
+  "dataset_sources": [
+    "anamitrasarkar007/asanaai-conf-creds"
+  ],
+  "kernel_sources": [
+    "anamitrasarkar007/weathergpt-serve-smoke"
+  ],
+  "competition_sources": [],
+  "model_sources": []
+}

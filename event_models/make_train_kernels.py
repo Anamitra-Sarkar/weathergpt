@@ -27,6 +27,11 @@ GROUPS = {
 }
 
 
+# The rain groups read the widest, longest tables (millions of point-days).  A 4x run-date thinning keeps ~240 run dates x
+# 2,709 points x 10 days, which is still millions of rows, and fits the 30 GB kernel.
+GROUP_ENV = {"train-rain-day": {"ROW_STRIDE": "4"}, "train-rain-window": {"ROW_STRIDE": "4"}}
+
+
 # Base-only variants: no extension predictors (USE_EXT=0).  They give the first real-data numbers while the extension
 # collection is still running, and are the "before" half of the feature-family ablation.
 BASE_SOURCES = [x for x in SOURCES if not x.startswith("ext-")]
@@ -36,20 +41,34 @@ BASE_GROUPS = {
 }
 
 
-def build(name: str, targets: list, extra_env: dict) -> Path:
+def build(name: str, targets: list, extra_env: dict, entry: str = "run_training.py", sources: list | None = None,
+          internet: bool = False, datasets: list | None = None) -> Path:
     out = ROOT / "backup" / "event_models" / name
     out.mkdir(parents=True, exist_ok=True)
-    env = {"TARGETS": ",".join(targets), **extra_env}
-    args = [sys.executable, str(ROOT / "event_models" / "bundle.py"), str(ROOT / "event_models" / "run_training.py"),
+    env = {"TARGETS": ",".join(targets), **extra_env} if targets else dict(extra_env)
+    args = [sys.executable, str(ROOT / "event_models" / "bundle.py"), str(ROOT / "event_models" / entry),
             str(out / f"{name}.py")] + [a for k, v in env.items() for a in ("--env", f"{k}={v}")]
     subprocess.run(args, check=True, capture_output=True)
+    if sources is None:
+        sources = BASE_SOURCES if extra_env.get("USE_EXT") == "0" else SOURCES
     meta = {"id": f"{OWNER}/weathergpt-{name}", "title": f"WeatherGPT {name}", "code_file": f"{name}.py",
             "language": "python", "kernel_type": "script", "is_private": True, "enable_gpu": False, "enable_tpu": False,
-            "enable_internet": False, "keywords": ["weather", "india"], "dataset_sources": [],
-            "kernel_sources": [f"{OWNER}/weathergpt-{s}" for s in (BASE_SOURCES if extra_env.get("USE_EXT") == "0" else SOURCES)],
+            "enable_internet": internet, "keywords": ["weather", "india"], "dataset_sources": list(datasets or []),
+            "kernel_sources": [f"{OWNER}/weathergpt-{s}" for s in sources],
             "competition_sources": [], "model_sources": []}
     (out / "kernel-metadata.json").write_text(json.dumps(meta, indent=2))
     return out
+
+
+def build_publish() -> Path:
+    """Publish to Hugging Face: the serve-smoke output + the private credentials dataset (hf_token, never printed)."""
+    return build("publish-hf", [], {"GFS_LEADSET": "all"}, entry="publish_hf.py", sources=["serve-smoke"], internet=True,
+                 datasets=[f"{OWNER}/asanaai-conf-creds"])
+
+
+def build_serve() -> Path:
+    """Serving smoke test: trained models + one data shard (points table) + the live network."""
+    return build("serve-smoke", [], {"GFS_LEADSET": "all"}, entry="serve_smoke.py", sources=["gfs-s1"] + list(GROUPS), internet=True)
 
 
 def push(path: Path):
@@ -65,12 +84,20 @@ def push(path: Path):
 
 if __name__ == "__main__":
     only_base = "--base" in sys.argv
+    only = next((a.split("=", 1)[1].split(",") for a in sys.argv if a.startswith("--only=")), None)   # e.g. --only=train-rain-day,train-rain-window
     paths = {}
-    if not only_base:
-        paths.update({n: build(n, t, {"ROUNDS": "1500"}) for n, t in GROUPS.items()})
-    paths.update({n: build(n, t, {"ROUNDS": "1500", "USE_EXT": "0"}) for n, t in BASE_GROUPS.items()})
+    if "--publish" in sys.argv:
+        paths["publish-hf"] = build_publish()
+    elif "--serve" in sys.argv:
+        paths["serve-smoke"] = build_serve()
+    elif only:
+        paths.update({n: build(n, GROUPS[n], {"ROUNDS": "1500", **GROUP_ENV.get(n, {})}) for n in only})
+    elif not only_base:
+        paths.update({n: build(n, t, {"ROUNDS": "1500", **GROUP_ENV.get(n, {})}) for n, t in GROUPS.items()})
+    if not only and "--serve" not in sys.argv and "--publish" not in sys.argv:
+        paths.update({n: build(n, t, {"ROUNDS": "1500", "USE_EXT": "0"}) for n, t in BASE_GROUPS.items()})
     print("built:", ", ".join(paths))
     if "--push" in sys.argv:
         for name, path in paths.items():
-            if only_base == name.startswith("base-") or not only_base:
+            if only or "--serve" in sys.argv or "--publish" in sys.argv or only_base == name.startswith("base-") or not only_base:
                 push(path)

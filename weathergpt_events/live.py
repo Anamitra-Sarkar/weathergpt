@@ -92,7 +92,10 @@ def fetch_static_arrays(run_date: date) -> dict:
     base.ensure_eccodes()
     ctx = mp.get_context("fork")
     with cf.ProcessPoolExecutor(max_workers=4, mp_context=ctx, initializer=base._init_worker) as pool:
-        lead, found = base.idx_task((run_date, base.LEADS[0]))
+        # idx_task needs the worker's HTTP client: it must run in the pool, not in this process
+        (lead, found), = pool.map(base.idx_task, [(run_date, base.LEADS[0])])
+        if found is None:
+            raise RuntimeError(f"GFS index for {run_date} f{base.LEADS[0]:03d} is not published")
         url, rows = found
         picked = base.pick(rows, base.STATIC)
         tasks = [(lead, name, url, s, e, d) for name, (s, e, d) in picked.items()]

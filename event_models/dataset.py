@@ -61,6 +61,29 @@ def read_all(root: str, pattern: str, dedupe_on: list | None = None, columns: li
     return frame.drop_duplicates(subset=dedupe_on) if dedupe_on else frame
 
 
+def read_thinned(root: str, pattern: str, dedupe_on: list, keep_dates=None, columns: list | None = None) -> pd.DataFrame:
+    """Like read_all, but memory-lean for the huge point-day tables: each file is cut to `keep_dates` (run dates) and its
+    float64 columns are stored as float32 BEFORE it joins the pile, so the full-width table never exists in memory."""
+    files = sorted(glob.glob(f"{root}/**/{pattern}", recursive=True))
+    if not files:
+        raise FileNotFoundError(f"no files match {pattern} under {root}")
+    parts = []
+    for f in files:
+        part = pd.read_parquet(f, columns=columns)
+        if keep_dates is not None:
+            part = part[pd.to_datetime(part["run_date"]).isin(keep_dates)].copy()
+        wide = [c for c in part.columns if part[c].dtype == np.float64 and c not in dedupe_on]
+        part[wide] = part[wide].astype(np.float32)
+        parts.append(part)
+    return pd.concat(parts, ignore_index=True).drop_duplicates(subset=dedupe_on)
+
+
+def run_dates(root: str, pattern: str) -> set:
+    """Every run date present in the files matching `pattern` (reads one column)."""
+    files = sorted(glob.glob(f"{root}/**/{pattern}", recursive=True))
+    return set(pd.to_datetime(pd.concat([pd.read_parquet(f, columns=["run_date"])["run_date"] for f in files])).unique())
+
+
 def read_parts(folder: Path, pattern: str) -> pd.DataFrame:
     parts = sorted(folder.glob(pattern))
     if not parts:
@@ -253,12 +276,16 @@ def chirps_cell_truth(chirps_dir: Path, points: pd.DataFrame, half_cell_deg: flo
                     col = np.full(n_days, np.nan)
                     col[:m] = ((totals >= t) & px_valid).sum(axis=1) / denom_w if px_valid.any() else np.nan
                     row[thr_col(t, f"frac_sum{w}_ge_")] = col
-            out.append(pd.DataFrame(row))
+            frame = pd.DataFrame(row)
+            wide = frame.select_dtypes("float64").columns          # 10M+ rows x ~50 label columns: float32 is ample for fractions / mm
+            frame[wide] = frame[wide].astype("float32")
+            out.append(frame)
     return pd.concat(out, ignore_index=True)
 
 
-def point_day_rain_table(p2: pd.DataFrame, truth: pd.DataFrame, min_valid_frac: float = 0.5) -> pd.DataFrame:
-    p2 = p2.copy()
+def point_day_rain_table(p2: pd.DataFrame, truth: pd.DataFrame, min_valid_frac: float = 0.5, inplace: bool = False) -> pd.DataFrame:
+    """`inplace=True` lets a caller that no longer needs `p2` skip the copy (the table is millions of rows wide)."""
+    p2 = p2 if inplace else p2.copy()
     p2["valid_date"] = pd.to_datetime(p2["run_date"]) + pd.to_timedelta(p2["day_k"].astype(int), unit="D")
     merged = p2.merge(truth, on=["point_id", "valid_date"], how="inner")
     merged = merged[merged["cell_valid_px"] >= min_valid_frac * 100].copy()

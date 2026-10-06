@@ -215,11 +215,97 @@ geography.
   coverage — a static interval over-covers calm conditions and under-covers rough ones);
 * everything is broken down by climate zone, lead time and season.
 
-Results: full tables **PENDING** (copied verbatim from the training kernels' `metrics.json`). **Preliminary first run** (kernel
-`base-events`: base features only, hash-only hold-out that left three zones without held-out places — since fixed by a zone-stratified
-hold-out): skill over zone × month climatology on places never seen, future dates (4,352,178 labelled station-steps):
-thunderstorm AUC 0.82 / BSS +0.066, fog 0.86 / +0.069, strong wind 0.83 / +0.051, rain-in-3h 0.82 / +0.091. To be re-run with the
-fixed split and the extension features before any of this is quoted as final.
+Results (training kernels `train-events`, `train-ranges`, `train-day`, `train-rain-day`, `train-rain-window` and the USE_EXT=0 runs `base-events`,
+`base-day`, run 2026-10-06; every number is copied by `backup/event_models/results_from_logs.py` from the kernels' own `TRAIN_SUMMARY` blocks, not typed).
+Rows are thinned (`row_stride` in each model's provenance; 4 for the two rain kernels, which otherwise exceed the 30 GB kernel). The two rain
+kernels were OOM-killed once each before the loader was made memory-lean.
+
+#### test_space (places never seen, future dates)
+
+| target | n | base rate | AUC | AUC raw-forecast feature | BSS vs zone x month | BSS vs global | ECE |
+|---|---|---|---|---|---|---|---|
+| thunderstorm | 276025 | 0.0425 | 0.849 | 0.725 | 0.075 | 0.087 | 0.0038 |
+| fog | 276025 | 0.0207 | 0.855 | 0.520 | 0.084 | 0.100 | 0.0146 |
+| strong_wind | 276025 | 0.0196 | 0.890 | 0.809 | 0.078 | 0.105 | 0.0072 |
+| rain_3h | 276025 | 0.1147 | 0.858 | 0.799 | 0.182 | 0.221 | 0.0141 |
+| dust | 276025 | 0.0042 | 0.888 | 0.697 | 0.094 | 0.032 | 0.0019 |
+| hot_day | 59727 | 0.0337 | 0.965 | 0.963 | 0.339 | 0.417 | 0.0028 |
+| cold_night | 59727 | 0.0118 | 0.975 | 0.972 | 0.260 | 0.469 | 0.0009 |
+| heatwave_imd | 46456 | 0.0044 | 0.865 | 0.865 | 0.060 | 0.016 | 0.0041 |
+| coldwave_imd | 46609 | 0.0024 | 0.779 | 0.678 | 0.667 | -0.461 | 0.0049 |
+| rain_3day_any_2p5mm | 376142 | 0.3149 | 0.892 | 0.829 | 0.350 | 0.519 | 0.0220 |
+| rain_3day_any_15mm | 376142 | 0.1298 | 0.936 | 0.880 | 0.335 | 0.508 | 0.0210 |
+| rain_7day_any_2p5mm | 186813 | 0.4750 | 0.899 | 0.836 | 0.385 | 0.571 | 0.0286 |
+
+| target | n | median MAE | raw GFS MAE | conformal coverage | mean width | static interval coverage / width |
+|---|---|---|---|---|---|---|
+| tmax_range | 59727 | 1.848 | 2.425 | 0.739 | 5.17 | 0.780 / 6.81 |
+| tmin_range | 59727 | 1.998 | 2.038 | 0.779 | 5.60 | 0.876 / 8.20 |
+| temperature_range | 271130 | 1.634 | 2.055 | 0.729 | 4.50 | 0.772 / 6.37 |
+| wind_range | 271132 | 1.089 | 1.387 | 0.736 | 2.91 | 0.786 / 4.15 |
+| humidity_range | 271092 | 7.638 | 13.356 | 0.804 | 24.68 | 0.821 / 40.43 |
+
+| curve | threshold mm | base rate | AUC | AUC raw GFS | BSS vs zone x month | BSS vs calibrated GFS |
+|---|---|---|---|---|---|---|
+| rain_curve | 0.1 | 0.2528 | 0.797 | 0.747 | 0.215 | 0.113 |
+| rain_curve | 0.5 | 0.2146 | 0.834 | 0.780 | 0.229 | 0.134 |
+| rain_curve | 1 | 0.1956 | 0.858 | 0.797 | 0.245 | 0.159 |
+| rain_curve | 2.5 | 0.1695 | 0.881 | 0.814 | 0.262 | 0.186 |
+| rain_curve | 5 | 0.1383 | 0.898 | 0.831 | 0.261 | 0.188 |
+| rain_curve | 7.5 | 0.1116 | 0.909 | 0.845 | 0.246 | 0.177 |
+| rain_curve | 10 | 0.0910 | 0.916 | 0.853 | 0.234 | 0.167 |
+| rain_curve | 15.6 | 0.0604 | 0.924 | 0.865 | 0.200 | 0.143 |
+| rain_curve | 25 | 0.0330 | 0.927 | 0.873 | 0.148 | 0.099 |
+| rain_curve | 35.5 | 0.0178 | 0.931 | 0.884 | 0.107 | 0.069 |
+| rain_curve | 50 | 0.0080 | 0.938 | 0.895 | 0.072 | 0.051 |
+| rain_curve | 64.5 | 0.0039 | 0.942 | 0.902 | 0.049 | 0.044 |
+| rain_curve | 90 | 0.0012 | 0.947 | 0.912 | 0.000 | 0.018 |
+| rain_curve | 115.6 | 0.0005 | 0.935 | 0.910 | -0.026 | -0.004 |
+| rain_curve | 150 | 0.0001 | n/a | n/a | -0.035 | -0.018 |
+| rain_curve | 204.5 | 0.0000 | n/a | n/a | 0.010 | 0.038 |
+| rain_3day_total | 2.5 | 0.3254 | 0.887 | 0.828 | 0.341 | 0.221 |
+| rain_3day_total | 5 | 0.2775 | 0.911 | 0.852 | 0.372 | 0.252 |
+| rain_3day_total | 10 | 0.2119 | 0.931 | 0.876 | 0.386 | 0.256 |
+| rain_3day_total | 25 | 0.1144 | 0.941 | 0.887 | 0.324 | 0.236 |
+| rain_3day_total | 50 | 0.0483 | 0.948 | 0.899 | 0.241 | 0.164 |
+| rain_3day_total | 75 | 0.0213 | 0.952 | 0.906 | 0.182 | 0.123 |
+| rain_3day_total | 100 | 0.0097 | 0.957 | 0.911 | 0.147 | 0.118 |
+| rain_3day_total | 150 | 0.0026 | 0.965 | 0.922 | 0.088 | 0.097 |
+| rain_3day_total | 200 | 0.0008 | 0.972 | 0.928 | 0.002 | 0.024 |
+| rain_7day_total | 5 | 0.4338 | 0.916 | 0.861 | 0.407 | 0.270 |
+| rain_7day_total | 10 | 0.3520 | 0.937 | 0.886 | 0.447 | 0.294 |
+| rain_7day_total | 25 | 0.2321 | 0.954 | 0.901 | 0.476 | 0.363 |
+| rain_7day_total | 50 | 0.1345 | 0.962 | 0.911 | 0.448 | 0.365 |
+| rain_7day_total | 75 | 0.0831 | 0.964 | 0.915 | 0.377 | 0.285 |
+| rain_7day_total | 100 | 0.0525 | 0.961 | 0.918 | 0.309 | 0.210 |
+| rain_7day_total | 150 | 0.0203 | 0.966 | 0.930 | 0.250 | 0.188 |
+| rain_7day_total | 200 | 0.0081 | 0.976 | 0.938 | 0.247 | 0.219 |
+| rain_7day_total | 300 | 0.0019 | 0.992 | 0.946 | 0.220 | 0.209 |
+
+
+#### Extension features vs base features (rows differ: the extension run keeps only rows that have all inputs)
+
+| target | ext AUC / BSS | base AUC / BSS | ext n | base n |
+|---|---|---|---|---|
+| thunderstorm | 0.849 / 0.075 | 0.842 / 0.072 | 276025 | 446225 |
+| fog | 0.855 / 0.084 | 0.877 / 0.112 | 276025 | 446225 |
+| strong_wind | 0.890 / 0.078 | 0.885 / 0.071 | 276025 | 446225 |
+| rain_3h | 0.858 / 0.182 | 0.852 / 0.169 | 276025 | 446225 |
+| hot_day | 0.965 / 0.339 | 0.963 / 0.334 | 59727 | 86412 |
+| heatwave_imd | 0.865 / 0.060 | 0.846 / -0.021 | 46456 | 67197 |
+
+How to read it, and what it does NOT show:
+
+* **Single run, single seed, no confidence intervals.** Differences of a few thousandths (including most of the extension-vs-base comparison) are noise.
+* **The extension-vs-base comparison is not row-paired** (the extension run keeps only rows with all its inputs; `n` differs). Visible: the extension
+  features clearly help `heatwave_imd` (BSS -0.021 -> +0.060) and slightly help `rain_3h`; they do **not** help `fog` (0.877 -> 0.855 AUC on held-out places).
+* `heatwave_imd`: the model's AUC equals the raw-forecast feature's (0.865 vs 0.865); its value is calibration, not ranking.
+* `coldwave_imd` looks great against zone x month climatology (BSS +0.667) but is **worse than the global base rate** (BSS -0.461): that baseline is
+  noisy for such a rare event. The admission gate therefore also requires a margin over the global base rate, and **refuses `coldwave_imd`**.
+* Rain-curve skill over zone x month climatology is +0.20..+0.26 up to 15.6 mm/day and fades with rarity; at roughly 90 mm and above it is none
+  (BSS <= 0), so the engine flags those thresholds in `thresholds_without_skill_mm` instead of presenting them as validated.
+* Rain truth is CHIRPS (satellite-gauge), which itself agrees with METAR rain reports only moderately; rain skill is skill against that noisy label.
+* `tmin_range` beats raw GFS by only about 2 % (median MAE 1.998 vs 2.038 C); `tmax_range` by about 24 %.
 
 ## 6. Serving: the feature store
 
@@ -264,8 +350,8 @@ and interpolation differ from what the models were trained on.
 | GFS base long horizon (days 5–9), every second run | running |
 | extension predictors (dynamics, ensemble, neighbourhoods, terrain), 52 steps, days 0–9 | running (4 shards) |
 | trainer, curve model, windows, IMD labels, anomalies — synthetic + full-pipeline tests | done |
-| train 18 models (5 kernels) | after extension collection |
-| ablation: base-only vs extension features | after training (same targets with `USE_EXT=0`) |
-| inference package `weathergpt_events` + tool descriptors | after training |
+| train 20 models (5 kernels) | done 2026-10-06 (19 of 20 targets pass the admission gate; `coldwave_imd` refused) |
+| ablation: base-only vs extension features | done for 6 targets (not row-paired; see section 5.3) |
+| inference package `weathergpt_events` + tool descriptors | built; live smoke test on Kaggle (`serve-smoke`) running |
 | planner + validator + executor in `app/` | design only; owned by the app side |
 | nowcast with live observations (nearest-station obs as features), 12Z cycle, odd run dates, gridded temperature truth | v1.1 |

@@ -12,9 +12,11 @@ import math
 import numpy as np
 import pandas as pd
 
+from event_models import collect_gfs as base
 from event_models import rain_products as rp
 from weathergpt_events import static as static_mod
 from weathergpt_events.features import FeatureBuilder, RunArrays
+from weathergpt_events import registry as reg_mod
 from weathergpt_events.registry import EventRegistry
 
 WINDOW_OF = {"rain3": 3, "rain7": 7}
@@ -87,10 +89,12 @@ class EventEngine:
 
     def forecast(self, lat: float, lon: float, run: RunArrays, targets: list | None = None, point_id: str | None = None,
                  static: pd.DataFrame | None = None, horizon_days: int = 10, include_unvalidated: bool = False) -> dict:
-        ok, why = static_mod.in_domain(lat, lon, self.builder.grids)
+        ok, why = static_mod.in_domain(lat, lon, self.builder.grids, min_land=self.builder.min_land)
         if not ok:
             return {"available": False, "reason": why, "run": run.run_date.isoformat()}
-        result = {"available": True, "run": run.run_date.isoformat(), "location": {"lat": lat, "lon": lon}, "targets": {}}
+        land = float(base.Sampler([lat], [lon])(self.builder.grids["land"])[0])
+        result = {"available": True, "run": run.run_date.isoformat(),
+                  "location": {"lat": lat, "lon": lon, "land_fraction": round(land, 2), "coastal": land < 0.5}, "targets": {}}
         cache: dict = {}
         for name in targets or list(self.registry.gates):
             gate = self.registry.gates.get(name)
@@ -119,6 +123,8 @@ class EventEngine:
                     entry["note"] = note
                 entries.append(entry)
             result["targets"][name] = {"available": True, "kind": model.kind, "zone": zone, "entries": entries}
+            if model.kind == "curve":     # tail thresholds the held-out data cannot vouch for (never silently trusted)
+                result["targets"][name]["thresholds_without_skill_mm"] = reg_mod.unskilled_thresholds(self.registry._metrics[name])
         return result
 
     @staticmethod

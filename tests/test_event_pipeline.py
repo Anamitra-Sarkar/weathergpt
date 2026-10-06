@@ -238,7 +238,13 @@ def test_short_horizon_data_skips_window_tables_with_a_clear_message(synthetic_i
     def short_only(root, pattern, dedupe_on=None, columns=None):
         frame = real(root, pattern, dedupe_on, columns)
         return frame[frame["day_k"] <= 4] if "day_k" in frame.columns and "point_days" in pattern else frame
+    real_thinned = rt.dataset.read_thinned
+
+    def short_thinned(root, pattern, dedupe_on, keep_dates=None, columns=None):
+        frame = real_thinned(root, pattern, dedupe_on, keep_dates, columns)
+        return frame[frame["day_k"] <= 4]
     monkeypatch.setattr(rt.dataset, "read_all", short_only)
+    monkeypatch.setattr(rt.dataset, "read_thinned", short_thinned)      # the point-day tables are read through this one now
     tables, _ = rt.build_tables({"rain3", "rain7"})
     assert "rain3" in tables and "rain7" not in tables
     assert "rain7: skipped" in capsys.readouterr().out

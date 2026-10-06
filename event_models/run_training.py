@@ -171,19 +171,32 @@ def build_tables(needed: set):
         print("[tables] day", len(table), dict(pd.Series(table["split"]).value_counts()),
               f"| ext {len(day_ext)} anom {len(anom_cols)}", f"{time.time() - t0:.0f}s", flush=True)
     if needed & {"rain", "rain3", "rain7"}:
-        p2 = dataset.read_all(INPUT, "p2_point_days_*.parquet", keys2)
+        # The point-day tables are wide and huge (millions of rows): thin to the kept run dates and drop to float32 while
+        # reading, file by file.  The kept dates are exactly what thinning the merged table used to keep.
+        dates = dataset.run_dates(INPUT, "p2_point_days_*.parquet")
+        if use_ext:
+            dates &= dataset.run_dates(INPUT, "p2x_point_days_*.parquet")
+        keep = set(sorted(dates)[::ROW_STRIDE]) if use_ext and ROW_STRIDE > 1 else None
+        p2 = dataset.read_thinned(INPUT, "p2_point_days_*.parquet", keys2, keep)
         ext_day_cols = []
         if use_ext:
-            p2x = dataset.read_all(INPUT, "p2x_point_days_*.parquet", keys2)
+            p2x = dataset.read_thinned(INPUT, "p2x_point_days_*.parquet", keys2, keep)
             ext_day_cols = dataset.ext_columns(p2x, keys2)
             p2 = dataset.merge_ext(p2, p2x, keys2, how="inner")
             del p2x
-        p2 = _thin_dates(p2, ROW_STRIDE if use_ext else 1)
         truth = dataset.chirps_cell_truth(chirps_dir, points)
-        print("[tables] p2 rows", len(p2), "| chirps truth rows", len(truth), f"{time.time() - t0:.0f}s", flush=True)
+        # keep only the label columns the requested products use (the 3/7-day window columns are most of the width)
+        window_cols = [c for c in truth.columns if c.startswith(("frac_any", "frac_sum"))]
+        if not needed & {"rain3", "rain7"}:
+            truth = truth.drop(columns=window_cols)
+        elif "rain" not in needed:
+            truth = truth.drop(columns=[c for c in truth.columns if c.startswith("frac_ge_")])
+        print("[tables] p2 rows", len(p2), "| cols", p2.shape[1], f"| {p2.memory_usage().sum() / 1e9:.1f} GB", "| chirps truth rows", len(truth), f"{time.time() - t0:.0f}s", flush=True)
     if "rain" in needed:
         p2a = fe.apply_climatology(p2, clim, "day", ref_map)
-        table = dataset.point_day_rain_table(p2a, truth)
+        if not needed & {"rain3", "rain7"}:
+            del p2                                  # nothing else needs it: free it before the big merge
+        table = dataset.point_day_rain_table(p2a, truth, inplace=True)
         table = table[table["rain_buckets"] >= 4].copy()
         table = fe.build_day_features(table, points, "valid_date")
         table["month"] = pd.to_datetime(table["valid_date"]).dt.month

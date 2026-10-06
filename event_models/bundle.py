@@ -1,4 +1,4 @@
-"""Inline the `event_models.*` modules an entry script imports into ONE file.
+"""Inline the `event_models.*` (and `weathergpt_events.*`) modules an entry script imports into ONE file.
 
 A Kaggle script kernel is a single file and we do not want to depend on the
 GitHub repo being current, so this produces a self-contained bundle:
@@ -16,17 +16,19 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-IMPORTS = (re.compile(r"^from event_models import (\w+)(?: as \w+)?\s*$", re.M),
-           re.compile(r"^from event_models\.(\w+) import ", re.M))
+PACKAGES = {"event_models": ROOT, "weathergpt_events": ROOT.parent / "weathergpt_events"}     # package -> source folder
+IMPORTS = [(pkg, rx) for pkg in PACKAGES for rx in (re.compile(rf"^from {pkg} import (\w+)(?: as \w+)?\s*$", re.M),
+                                                    re.compile(rf"^from {pkg}\.(\w+) import ", re.M))]
 
 
 def modules_needed(source: str, seen: dict) -> None:
-    for name in [n for rx in IMPORTS for n in rx.findall(source)]:
-        if name in seen:
-            continue
-        text = (ROOT / f"{name}.py").read_text()
-        modules_needed(text, seen)  # dependencies first
-        seen[name] = text
+    for pkg, rx in IMPORTS:
+        for name in rx.findall(source):
+            if (pkg, name) in seen:
+                continue
+            text = (PACKAGES[pkg] / f"{name}.py").read_text()
+            modules_needed(text, seen)  # dependencies first
+            seen[(pkg, name)] = text
 
 
 def bundle(entry: Path, env: dict | None = None) -> str:
@@ -35,12 +37,15 @@ def bundle(entry: Path, env: dict | None = None) -> str:
     modules_needed(source, mods)
     header = ["import os as _os"] + [f"_os.environ[{k!r}] = {v!r}" for k, v in (env or {}).items()]
     header += ["import sys as _sys, types as _types",
-              "_pkg = _types.ModuleType('event_models'); _pkg.__path__ = []; _sys.modules['event_models'] = _pkg",
-              "def _load(name, src):",
-              "    m = _types.ModuleType('event_models.' + name); _sys.modules['event_models.' + name] = m",
-              "    setattr(_pkg, name, m); exec(compile(src, 'event_models/' + name + '.py', 'exec'), m.__dict__)"]
-    for name, text in mods.items():
-        header.append(f"_load({name!r}, {text!r})")
+               "def _load(pkg, name, src):",
+               "    if pkg not in _sys.modules:",
+               "        _p = _types.ModuleType(pkg); _p.__path__ = []; _sys.modules[pkg] = _p",
+               "    m = _types.ModuleType(pkg + '.' + name); _sys.modules[pkg + '.' + name] = m",
+               "    setattr(_sys.modules[pkg], name, m); exec(compile(src, pkg + '/' + name + '.py', 'exec'), m.__dict__)"]
+    for (pkg, name), text in mods.items():
+        header.append(f"_load({pkg!r}, {name!r}, {text!r})")
+    if "_bundled_sources" in source:     # entry scripts that republish their own code (publish_hf) read this {relative path: text}
+        header.append(f"_sys._bundled_sources = {({f'{pkg}/{name}.py': text for (pkg, name), text in mods.items()})!r}")
     # `from __future__` must be the first statement, so hoist it above the header
     future = "from __future__ import annotations\n"
     body = source.replace(future, "", 1)

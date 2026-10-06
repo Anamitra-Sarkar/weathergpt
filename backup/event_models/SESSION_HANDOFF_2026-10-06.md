@@ -113,12 +113,12 @@ Kernel bundles + metadata live under `backup/event_models/<slug>/`. `docs/AGENTI
 Tests: **81 passed** (`python3 -m pytest tests -q -k "event or events or rain"`, ≈ 3 min with the cached fixture): `tests/test_event_{labels,dataset,features,ext,train}.py`,
 `test_events_{static,registry}.py`, `test_rain_products.py`, and `test_event_pipeline.py` (builds a synthetic 10-day fixture,
 cached at `/tmp/weathergpt_pipeline_fixture_v4`, first run ≈ 9 min; bump `FIXTURE_VERSION` if the generators change). That file
-covers: tables with/without extension, every one of the 18 targets training end to end, short-horizon skip, **train/serve
+covers: tables with/without extension, every one of the 20 targets training end to end, short-horizon skip, **train/serve
 parity** (serving features == training features, row for row, for step / IST-day / rain-day / 3-day / 7-day tables), the engine
 (structure, monotone curves, horizon, no numbers without validated skill, refusals) and the tool catalogue.
 NOT covered by any test: the live network fetch in `weathergpt_events/live.py` and real-data skill (needs Kaggle).
 
-## 7. Models (18 targets; none trained on real data yet)
+## 7. Models (20 targets; all trained on real data on 2026-10-06, see the latest update at the bottom)
 
 step events: thunderstorm, fog, strong_wind, rain_3h, dust · step ranges: temperature_range, wind_range, humidity_range ·
 station-day: hot_day, cold_night, heatwave_imd, coldwave_imd, tmax_range, tmin_range · rain: **rain_curve** (16-threshold
@@ -146,3 +146,34 @@ Extension shards may take longer than 5 h (47–63 s/date measured; 4 shards × 
 estimate (~45 min/model/quantile; ranges train 3 quantiles each) · rain tables are huge: `ROW_STRIDE=2` thins them for memory (30 GB) ·
 test period for rain ends 2026-08-31 (CHIRPS lag) · live fetch in `live.py` is untested on the network (no local downloads allowed; test on Kaggle) ·
 IEM/NOAA URLs were stable during this session but are third-party.
+
+## Update 2026-10-06 ~19:20 IST (after compaction)
+- ext-e1..e4 COMPLETE, EXT_REPORT clean (field_absence {}, bad_messages {}).
+- Pushed 5 train kernels at 19:15 IST (account anamitrasarkar007, CPU): train-events, train-ranges, train-day, train-rain-day, train-rain-window — all RUNNING.
+- `make_train_kernels.py --push` (background, started 19:15) is retrying base-events / base-day every 60 s until a CPU slot frees (limit 5). If that process died, re-run `python3 event_models/make_train_kernels.py --base --push`.
+- Next: read logs via `python3 backup/event_models/kaggle_log.py anamitrasarkar007/weathergpt-<slug>`; read metrics.json; base-vs-ext ablation on the fixed split; static grids + serving smoke kernel; HF publish without Modal. Not pushed to GitHub. No Modal.
+- A second kaggle.json may exist for GPU if ever needed (user said so); not needed so far.
+
+## Update 2026-10-06 ~19:50 IST (second compaction)
+- COMPLETE: train-events, train-day, base-events (fixed split), base-day. RUNNING: train-ranges. train-rain-day and train-rain-window were **OOM-killed** ("Killed" right after the `[tables] points` line, before `[tables] p2 rows`): the full-width p2 + p2x tables were read, merged and only then thinned. Fixed with `dataset.read_thinned` / `dataset.run_dates` (thin to the same kept run dates and store float32 per file; synthetic check = identical keys, max diff 9e-8; 14 unit tests pass). Both re-pushed 19:40 via `python3 event_models/make_train_kernels.py --only=train-rain-day,train-rain-window --push` (new `--only=` flag).
+- Results are printed between `TRAIN_SUMMARY_BEGIN`/`TRAIN_SUMMARY_END` in each kernel log (JSON, per target -> metrics -> val/test_time/test_space).
+- test_space AUC / BSS vs zone-month climatology, ext vs base (fixed split): thunderstorm .849/.075 vs .842/.072; fog .855/.084 vs .877/.112 (**ext worse**); strong_wind .890/.078 vs .885/.071; rain_3h .858/.182 vs .852/.169; hot_day .965/.339 vs .963/.334; heatwave_imd .865/.060 vs .846/-.021 (ext clearly better). Others (ext only): dust .888/.094; cold_night .975/.260; coldwave_imd AUC .779 but BSS .667 -> almost surely a tiny-positive-count artefact, do NOT quote.
+- **Caveat: base vs ext are not row-paired** (ext does an inner merge, so n differs, e.g. tmax_range 59.7k vs 86.4k test_space rows). Treat differences of a few thousandths as noise; a paired ablation needs base re-scored on the ext row set.
+- tmax_range test_space: median MAE 1.85 vs raw GFS 2.43; conformal coverage .739 (band .70-.90). tmin_range: MAE 2.00 vs raw GFS 2.04 (barely better), coverage .779.
+
+## Update 2026-10-07 ~01:00 IST (third block; supersedes the older "pending" lines above)
+- **There are 20 targets, not 18** (5 step events, 3 step ranges, 6 station-day, rain_curve, 5 rain windows) -- the "18" in older text was a miscount.
+- ALL 5 train kernels COMPLETE and base-events/base-day (fixed split) COMPLETE. Both rain kernels needed memory fixes: `read_thinned` (per-file thinning + float32), truth columns trimmed per product, `point_day_rain_table(inplace=True)`, `ROW_STRIDE=4` for those two kernels (`GROUP_ENV` in `make_train_kernels.py`). Final tables: rain 6.37 M rows, rain3 5.03 M, rain7 2.43 M.
+- Verbatim results are in `docs/AGENTIC_ARCHITECTURE.md` section 5.3, generated by `backup/event_models/results_from_logs.py LOG... --base LOG...` (logs fetched with `kaggle_log.py`).
+- **Gate fix (real finding):** `coldwave_imd` had BSS +0.667 vs zone x month but -0.461 vs the global base rate; the gate now also requires BSS vs global >= MIN_BSS. Applying the gate to the real summaries: 19 of 20 served, `coldwave_imd` refused. New `registry.unskilled_thresholds` + engine key `thresholds_without_skill_mm` flag rain-curve tail thresholds (>= ~90 mm daily) with no held-out skill.
+- New: `event_models/serve_smoke.py` (static grids + live GFS/GEFS run + gate + engine on 12 places incl. sea/out-of-domain refusals; `--serve` flag of `make_train_kernels.py`), `event_models/publish_hf.py` (private HF repo `<user>/weathergpt-events`, card generated from metrics; token from the private Kaggle dataset `asanaai-conf-creds`, never printed), bundler now inlines `weathergpt_events` too. 12/12 pipeline tests + registry/static tests pass locally.
+- `serve-smoke` pushed 00:51 IST; next: read `SERVE_SMOKE_BEGIN..END` from its log (`kaggle_log.py anamitrasarkar007/weathergpt-serve-smoke`), fix anything it finds, then build/push `publish-hf` (sources: `serve-smoke` + dataset `asanaai-conf-creds`; needs `enable_internet`).
+- Nothing committed since the 3 original commits (user did not ask); nothing pushed.
+
+## Update 2026-10-07 ~01:30 IST (final block for this session)
+- **serve-smoke PASS (0 problems)** on the live 2026-10-06 00Z GFS+GEFS run: static grids built from GFS orography/land mask, run fetched in ~100 s (52+52 steps), 20 artifacts through the gate (19 served, `coldwave_imd` refused), engine ~12 s per place, 9 inland + 5 coastal cities answered, open sea / London refused. Real bug found by it and fixed: `live.fetch_static_arrays` ran `idx_task` outside the worker pool (HTTP client is None there). Plausibility samples (log lines `[serve-sample]`): Delhi 6 Oct tmax day-1 q10/q50/q90 = 33.5/35.5/35.7 C, P(any rain) 0.026. Not verified against observations; Cherrapunji tmax (~29.6 C) looks high for a ~1,300 m town -- probably GFS cell elevation vs the actual site (unchecked).
+- **Coastal rule is data-driven now**: 13 of 136 training stations have land fraction < 0.5 (5th percentile 0.27), so `FeatureBuilder.min_land = min(0.5, 5th pct of station land_frac)`; results carry `location.land_fraction` and `coastal`. Chennai (0.29) is served; Puri (0.24) is refused.
+- **Published (PRIVATE) to https://huggingface.co/Arko007/weathergpt-events** by Kaggle kernel `publish-hf` (token read from the private dataset `asanaai-conf-creds`, never printed; 111 files: 19 served model dirs, `models_not_served/coldwave_imd/metrics.json`, `static_grids.npz`, `points.parquet`, `climatology_day.parquet`, `live_smoke_report.json`, `src/` inference + shared feature code, generated `README.md` card). Make it public from the HF settings page when ready. The old public `Arko007/weathergpt-models` card is untouched (still says `pip install weathergpt-models`).
+- Tests: 12/12 `tests/test_event_pipeline.py` (parity + engine) pass with all of today's changes; registry/static/features tests pass. NOT covered by tests: the live network fetch (covered only by the Kaggle smoke run).
+- **Uncommitted** (the user has not asked for a commit): `event_models/{dataset,run_training,make_train_kernels,bundle,serve_smoke,publish_hf}.py`, `weathergpt_events/{registry,engine,features,live}.py`, tests, `docs/AGENTIC_ARCHITECTURE.md`, `backup/event_models/*` (bundles + `results_from_logs.py` + this file). Nothing pushed to GitHub.
+- Still open / v1.1: nowcast with live observations, 12Z cycle, odd run dates, paired (row-matched) base-vs-extension ablation, per-model seeds/CIs, the `app/` planner/validator/executor (teammate's area), `tmin_range` barely beats raw GFS (2 %), fog may be better served by base features.

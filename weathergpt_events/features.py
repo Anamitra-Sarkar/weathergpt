@@ -41,6 +41,10 @@ class FeatureBuilder:
         self.grids = grids
         self.clim = climatology.set_index(["point_id", "bin"]) if "bin" in climatology.columns else climatology
         self.nodes = nodes
+        # Coastal places were part of training (METAR stations whose 0.25 deg cell is partly sea), so "land-only" means "no less land than the
+        # training stations had" (their 5th percentile), never stricter than the 0.5 the grid nodes satisfy.
+        stations = nodes[nodes["kind"] == "station"] if {"kind", "land_frac"} <= set(nodes.columns) else nodes.iloc[0:0]
+        self.min_land = min(0.5, float(stations["land_frac"].quantile(0.05))) if len(stations) >= 20 else 0.5
         self.terrain = {"dzdx": grids["dzdx"], "dzdy": grids["dzdy"]}
 
     # ------------------------------------------------------------------ location

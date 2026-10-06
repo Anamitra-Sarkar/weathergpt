@@ -47,9 +47,15 @@ def gate(metrics: dict) -> GateResult:
     kind = metrics["kind"]
     if kind in ("binary", "xent"):
         bss, auc, auc_rule = space.get("bss_vs_zone_month"), space.get("auc"), space.get("auc_rule_feature")
-        head = {"bss_vs_zone_month": bss, "auc": auc, "auc_rule_feature": auc_rule}
+        bss_global = space.get("bss_vs_global")
+        head = {"bss_vs_zone_month": bss, "bss_vs_global": bss_global, "auc": auc, "auc_rule_feature": auc_rule}
         if bss is None:
             return GateResult(name, False, "no local-climatology baseline recorded", head)
+        # The zone x month table is a noisy baseline for rare events (it can be WORSE than a constant); the model must also
+        # beat the plain global base rate, otherwise "skill over climatology" could just be a bad climatology.
+        if bss_global is not None and bss_global < MIN_BSS:
+            return GateResult(name, False, f"does not beat the global base rate on unseen places by a meaningful margin (BSS {bss_global} < {MIN_BSS}); "
+                                           f"the zone x month baseline (BSS {bss}) is too noisy to vouch for it", head)
         if bss < MIN_BSS:
             return GateResult(name, False, f"does not beat local climatology on unseen places by a meaningful margin (BSS {bss} < {MIN_BSS})", head)
         if auc is not None and auc < MIN_AUC:
@@ -82,6 +88,18 @@ def gate(metrics: dict) -> GateResult:
                 return GateResult(name, False, f"threshold {k} mm does not beat local climatology on unseen places (BSS {b})", head)
         return GateResult(name, True, "ok", head)
     return GateResult(name, False, f"unknown kind {kind!r}")
+
+
+def unskilled_thresholds(metrics: dict) -> list:
+    """Rain-curve thresholds (mm) at which the held-out data show NO skill over zone x month climatology (BSS < MIN_BSS, or
+    too few events to say).  The curve is still returned for these, but they must not be presented as validated."""
+    thresholds = metrics.get("metrics", {}).get("test_space", {}).get("thresholds") or {}
+    out = []
+    for key, entry in thresholds.items():
+        bss = entry.get("bss_vs_zone_month")
+        if bss is None or bss < MIN_BSS:
+            out.append(float(entry.get("threshold_mm", key)))
+    return sorted(out)
 
 
 def zone_lead_skill(metrics: dict, zone: str, lead_bucket: str | None) -> tuple:

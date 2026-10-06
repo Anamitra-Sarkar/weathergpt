@@ -62,3 +62,22 @@ def test_run_freshness_rule():
     assert live.run_is_fresh(date(2026, 10, 4), now)                       # 54 h old: the limit
     assert not live.run_is_fresh(date(2026, 10, 3), now)                   # 78 h old: stale, refuse
     assert not live.run_is_fresh(date(2026, 10, 7), now)                   # a run "from the future" is a clock/date bug, not fresh
+
+
+def test_coastal_rule_follows_the_training_stations_and_is_never_stricter_than_the_nodes():
+    import pandas as pd
+    from weathergpt_events.features import FeatureBuilder
+    zeros = np.zeros((4, 4), "float32")
+    grids = {"dzdx": zeros, "dzdy": zeros}
+
+    def points(station_land):
+        rows = [("N", 1.0)] * 50 + [("S", v) for v in station_land]
+        return pd.DataFrame({"point_id": [f"{k}{i}" for i, (k, _) in enumerate(rows)], "kind": ["node" if k == "N" else "station" for k, _ in rows],
+                             "lat": 20.0, "lon": 78.0, "land_frac": [v for _, v in rows]})
+
+    coastal = FeatureBuilder(grids, pd.DataFrame(), points([1.0] * 80 + [0.3] * 20))        # 20 % of stations are coastal
+    assert 0.29 < coastal.min_land < 0.31                                                      # 5th percentile of the stations
+    inland_only = FeatureBuilder(grids, pd.DataFrame(), points([1.0] * 100))
+    assert inland_only.min_land == 0.5                                                         # never above the 0.5 the nodes satisfy
+    few = FeatureBuilder(grids, pd.DataFrame(), points([0.1] * 5))                              # too few stations to trust a percentile
+    assert few.min_land == 0.5

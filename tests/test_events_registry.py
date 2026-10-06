@@ -107,6 +107,11 @@ def test_gate_rules_for_each_kind():
     # within sampling noise of the raw feature is acceptable; the 0.01 tolerance is the only slack
     assert registry.gate(_gate_metrics(kind="binary", bss_vs_zone_month=0.1, auc=0.695, auc_rule_feature=0.70)).passed
     assert not registry.gate(_gate_metrics(kind="binary", bss_vs_zone_month=0.1, auc=0.685, auc_rule_feature=0.70)).passed
+    # a rare-event model can "beat" a noisy zone x month table while being worse than a constant (real coldwave_imd run:
+    # BSS +0.667 vs zone x month, -0.461 vs the global rate): it must not be served
+    worse_than_constant = registry.gate(_gate_metrics(kind="binary", bss_vs_zone_month=0.667, bss_vs_global=-0.461, auc=0.78, auc_rule_feature=0.68))
+    assert not worse_than_constant.passed and "global base rate" in worse_than_constant.reason
+    assert registry.gate(_gate_metrics(kind="binary", bss_vs_zone_month=0.06, bss_vs_global=0.016, auc=0.865, auc_rule_feature=0.865)).passed
     assert registry.gate(_gate_metrics(kind="quantile", median_mae=1.0, gfs_raw_mae=1.4, coverage_conformal=0.8)).passed
     assert "outside" in registry.gate(_gate_metrics(kind="quantile", median_mae=1.0, gfs_raw_mae=1.4, coverage_conformal=0.55)).reason
     assert not registry.gate(_gate_metrics(kind="quantile", median_mae=1.5, gfs_raw_mae=1.4, coverage_conformal=0.8)).passed
@@ -126,3 +131,14 @@ def test_zone_and_lead_skill_lookup():
     ok, why = registry.zone_lead_skill(m, "islands", None)
     assert not ok and "no held-out evidence" in why                  # 40 rows is not evidence, however good it looks
     assert not registry.zone_lead_skill(m, "himalaya_north", None)[0]
+
+
+def test_unskilled_thresholds_lists_tail_thresholds_without_held_out_skill():
+    from weathergpt_events.registry import unskilled_thresholds
+    metrics = {"metrics": {"test_space": {"thresholds": {
+        "25": {"threshold_mm": 25.0, "bss_vs_zone_month": 0.148},
+        "90": {"threshold_mm": 90.0, "bss_vs_zone_month": 0.0},
+        "115.6": {"threshold_mm": 115.6, "bss_vs_zone_month": -0.026},
+        "204.5": {"threshold_mm": 204.5, "bss_vs_zone_month": None}}}}}
+    assert unskilled_thresholds(metrics) == [90.0, 115.6, 204.5]
+    assert unskilled_thresholds({}) == []
