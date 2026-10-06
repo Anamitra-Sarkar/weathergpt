@@ -23,8 +23,13 @@ from weathergpt_events import models
 from weathergpt_events import registry as reg_mod
 from weathergpt_events import static
 from weathergpt_events import tools
+from weathergpt_events import loader
+from weathergpt_events import service
+from weathergpt_events import api
+from weathergpt_events import ceo_bridge
+from weathergpt_events import __main__ as cli_module
 
-_INLINED = (dataset, engine, features, live, models, static)     # imported only so the bundle carries (and republishes) them
+_INLINED = (dataset, engine, features, live, models, static, loader, service, api, ceo_bridge, cli_module)     # imported only so the bundle carries (and republishes) them
 
 INPUT = "/kaggle/input"
 WORK = Path("/kaggle/working") if Path("/kaggle").exists() else Path("publish_out")
@@ -122,16 +127,18 @@ problems found: **{len(smoke.get('problems', []))}**.  Details: `live_smoke_repo
 
 ## Use
 ```python
-# pip install lightgbm pandas numpy scipy eccodes ; add ./src to PYTHONPATH
-from weathergpt_events import static, registry, engine, features, live
-import pandas as pd
-grids = static.load_static_grids("static_grids.npz")
-reg = registry.EventRegistry.from_dir("models")
-clim, points = pd.read_parquet("climatology_day.parquet"), pd.read_parquet("points.parquet")
-eng = engine.EventEngine(reg, features.FeatureBuilder(grids, clim, points))
-run = live.RunStore("cache").load(live.RunStore("cache").latest())      # needs internet (AWS)
-print(eng.forecast(28.61, 77.21, run, targets=["rain_curve", "tmax_range"]))
+# pip install lightgbm pandas numpy scipy eccodes huggingface_hub httpx ; put ./src on PYTHONPATH (or clone the GitHub repo)
+from weathergpt_events.loader import load_engine
+from weathergpt_events.service import ForecastService, summarise
+
+engine = load_engine("{repo}")                      # downloads the artifacts; only models that pass the gate are loaded
+service = ForecastService.live(engine, cache_dir="run_cache")        # newest GFS/GEFS run (about 1.5 minutes the first time)
+print(summarise(service.forecast(28.61, 77.21, targets=["rain_curve", "tmax_range"], horizon_days=3)))
+service.call_tool("thunderstorm", {{"lat": 19.08, "lon": 72.88}})      # what an orchestrator LLM would emit
 ```
+Command line: `python -m weathergpt_events --source {repo} forecast --lat 28.61 --lon 77.21 --horizon 3`.
+HTTP: `weathergpt_events.api.create_router(service)` is a FastAPI router.  Evidence objects for the WeatherGPT backend: `weathergpt_events.ceo_bridge.to_ceos`.
+Implementation notebook, guide and tests: https://github.com/Anamitra-Sarkar/weathergpt (`notebooks/`, `docs/EVENT_MODELS_GUIDE.md`, `tests/`).
 Repo: `{repo}`
 """
 

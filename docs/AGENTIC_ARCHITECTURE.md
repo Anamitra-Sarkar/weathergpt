@@ -1,8 +1,9 @@
 # WeatherGPT — agentic architecture with specialist models
 
-Status: **data collected, extension features collecting, training next** (2026-10-06). Model results are filled in
-only from `metrics.json` files produced by the training kernels — nothing in the
-results sections is typed by hand. Sections marked `PENDING` have no numbers yet.
+Status (2026-10-07): **data collected, 20 models trained and gated (19 served), live serving smoke-tested, artifacts published (private) to
+Hugging Face `Arko007/weathergpt-events`.** The planner / validator / executor inside `app/` is the backend team's part and is design-only here.
+Model results are copied from the training kernels' own logs (`backup/event_models/results_from_logs.py`) — nothing in the results sections is
+typed by hand. Practical entry points: `docs/EVENT_MODELS_GUIDE.md` (use + reproduce + test), `notebooks/weathergpt_events_implementation.ipynb`.
 
 ## 1. The idea in one paragraph
 
@@ -62,7 +63,7 @@ Be honest about the economics, because it decides the design:
 |---|---|---|---|
 | Planner LLM + plan validator | app | new `app/agentic/` (proposed) replacing keyword `build_retrieval_plan` | designed, not built |
 | Data tool adapters | app | `app/adapters/*` (exist) + new `metar_live` | exist / one new |
-| Specialist models + feature store | ML | `event_models/` (training) → `weathergpt_events/` (inference package, as `weathergpt_models` is) | training in progress |
+| Specialist models + feature store | ML | `event_models/` (training) → `weathergpt_events/` (inference package, as `weathergpt_models` is) | trained and published (see section 5.3) |
 | Evidence objects, reviewer, WIO | app | `app/schemas/ceo.py`, `app/agents/orchestrator.py` | exist |
 | Skill cards / gating table | ML | `metrics.json` per model, loaded by the registry | produced by training |
 
@@ -309,13 +310,17 @@ How to read it, and what it does NOT show:
 
 ## 6. Serving: the feature store
 
-A model's inputs are GFS fields at the user's location. To avoid train/serve skew the
-serving side reproduces the training extraction exactly: `event_models/collect_gfs.py`
-already fetches the needed GRIB messages by byte range and decodes them. In production
-this runs as a small job per GFS cycle, writes the India window (18 fields × 32 steps ×
-129 × 125) to disk, and every query then does a bilinear lookup and a ~10 ms model call.
-Open-Meteo's own GFS series is deliberately **not** used as model input — its variables
-and interpolation differ from what the models were trained on.
+A model's inputs are GFS/GEFS fields at the user's location. To avoid train/serve skew the serving side reuses the training code:
+`weathergpt_events/live.py` fetches the newest run with the collectors' own byte-range + GRIB decode (`event_models/collect_gfs.py`,
+`collect_gfs_ext.py`), `weathergpt_events/features.py` builds the same tables the trainer built (a parity test compares serving and training
+features row for row), and every location is referenced to its nearest grid node's climatology exactly as in training.
+Open-Meteo's own GFS series is deliberately **not** used as model input — its variables and interpolation differ from what the models were trained on.
+
+Measured on a Kaggle CPU kernel against the real 2026-10-06 00Z run (`serve-smoke`): static grids ~2 s, run download + decode **~85 s** (52 base + 52
+extension steps, about 300 MB, cached on disk afterwards), then **~12 s per place for all served models** (table building dominates, not the boosters).
+`ForecastService` (`weathergpt_events/service.py`) checks for a newer run at most every 15 minutes and **refuses** instead of serving a run older than 54 h.
+Places are answered when the 0.25° GFS cell has at least the land fraction the training stations had (5th percentile, about 0.27), so coastal cities
+such as Chennai are served while open sea, far-coastal cells (e.g. Puri, 0.24) and points outside 6–38°N × 67–98°E are refused with a reason.
 
 ## 7. Planner design
 
@@ -325,6 +330,9 @@ and interpolation differ from what the models were trained on.
 * Plan validator (deterministic): tool exists; args type-check; horizon within the tool's
   range; location inside the validated domain; model skill table says `skill_ok(zone,
   lead)`; otherwise the tool is dropped and the reason is attached to the answer.
+  *Implemented on the model side:* `ForecastService.call_tool` rejects unknown tools, extra or non-numeric arguments and horizons outside 1–10
+  before anything runs; domain and per-(zone, lead) skill checks happen inside the engine, entry by entry; `ceo_bridge.to_ceos` turns validated
+  answers into the backend's evidence objects. The planner LLM and the executor wiring in `app/` remain the backend team's work.
 * If the LLM is unavailable or returns invalid JSON, fall back to the existing keyword
   planner — the system degrades, it does not fail.
 * Evaluation of routing: the D4 v2 corpus (4,027 multilingual queries with intent and
@@ -347,11 +355,14 @@ and interpolation differ from what the models were trained on.
 | source feasibility probes (METAR, CHIRPS, GFS, GEFS on AWS) | done |
 | truth collector (METAR + CHIRPS) | done |
 | GFS base collector, 2,012 runs, days 0–4 | done (one corrupt NOAA date, handled) |
-| GFS base long horizon (days 5–9), every second run | running |
-| extension predictors (dynamics, ensemble, neighbourhoods, terrain), 52 steps, days 0–9 | running (4 shards) |
+| GFS base long horizon (days 5–9) | done (2,012 runs, forecast days 0–9) |
+| extension predictors (dynamics, ensemble, neighbourhoods, terrain), 52 steps, days 0–9 | done (4 shards, every second run date, clean reports) |
 | trainer, curve model, windows, IMD labels, anomalies — synthetic + full-pipeline tests | done |
 | train 20 models (5 kernels) | done 2026-10-06 (19 of 20 targets pass the admission gate; `coldwave_imd` refused) |
 | ablation: base-only vs extension features | done for 6 targets (not row-paired; see section 5.3) |
-| inference package `weathergpt_events` + tool descriptors | built; live smoke test on Kaggle (`serve-smoke`) running |
+| inference package `weathergpt_events` + tool descriptors | done; **live smoke test on Kaggle PASS** (real 2026-10-06 run, 13 cities answered, Puri / open sea / outside refused, 0 structural problems) |
+| artifacts published | done, **private** HF repo `Arko007/weathergpt-events` (make public from HF settings); the first publish predates the loader/service/API modules — re-run `publish-hf` once to refresh `src/` and the card |
+| real-world layer: `loader`, `service`, CLI, FastAPI router, CEO bridge | done, unit-tested offline (`tests/test_events_service.py`) |
+| implementation notebook | written, every code cell executed offline against a canned engine (`tests/test_notebook.py`); **not yet run against the live HF repo / live run** |
 | planner + validator + executor in `app/` | design only; owned by the app side |
 | nowcast with live observations (nearest-station obs as features), 12Z cycle, odd run dates, gridded temperature truth | v1.1 |

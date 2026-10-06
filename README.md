@@ -14,6 +14,14 @@ WeatherGPT is a modular FastAPI weather-intelligence backend. It normalizes sour
 - Structured deterministic agents, evidence-ID reviewer, WIO response, evidence lookup, SQLite user-context and feedback storage, and RADE v2.
 - Versioned and compatibility API endpoints: `/health`, `/wio/query`, `/query`, `/decision`, `/rade/advise`, `/context`, `/feedback`, `/forecast`, `/warnings/active`, `/evidence/{id}`, `/metrics`.
 
+## Event / range / rain models (ML layer)
+
+Twenty per-target LightGBM models (19 served) post-process NOAA GFS + GEFS into calibrated answers for any land point in India, 10 days ahead: thunderstorm / fog / wind / rain
+chances, rain amounts, temperature, wind and humidity ranges, heat-wave days and 3-/7-day rain windows. A model answers only where its own held-out metrics (unseen places, future dates)
+prove skill. Start with `docs/EVENT_MODELS_GUIDE.md` and `notebooks/weathergpt_events_implementation.ipynb`; design and verbatim results are in `docs/AGENTIC_ARCHITECTURE.md`;
+code is in `event_models/` (training) and `weathergpt_events/` (inference, CLI, FastAPI router, evidence-object bridge). Artifacts: private Hugging Face repo `Arko007/weathergpt-events`.
+The older M1/M3/M5 notes in `docs/` describe the previous ML layer, which is kept but no longer needed.
+
 ## Experimental or unavailable
 
 - Member-level ensemble output is accepted only when Open-Meteo returns actual member fields. A forecast mean is not presented as an ensemble.

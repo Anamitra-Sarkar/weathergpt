@@ -389,6 +389,22 @@ def test_engine_answers_are_structured_coherent_and_bounded(parity_setup, tmp_pa
     assert len(short["targets"]["rain_curve"]["entries"]) == 3
 
 
+def test_real_engine_output_converts_to_valid_evidence_objects(parity_setup, tmp_path, monkeypatch):
+    """The CEO bridge on what the engine really returns (not a hand-made dict): every evidence object validates."""
+    pytest.importorskip("app.schemas.ceo")
+    from weathergpt_events.ceo_bridge import to_ceos
+    s = parity_setup
+    engine = _engine(parity_setup, tmp_path, monkeypatch)
+    pid, (lat, lon) = "S:VAAA", STATIONS["S:VAAA"]
+    out = engine.forecast(lat, lon, s["run"], point_id=pid, static=_station_static(s["root"], pid), horizon_days=10)
+    ceos = to_ceos(out)
+    names = {c.model_name.split(":")[1] for c in ceos}
+    assert names == {"thunderstorm", "tmax_range", "rain_curve"}
+    assert sum(c.model_name.endswith("thunderstorm") for c in ceos) == len(ALL_LEADS)
+    assert all(0.0 <= c.probability <= 1.0 for c in ceos if c.probability is not None)
+    assert all(c.valid_from < c.valid_to for c in ceos)
+
+
 def test_engine_withholds_numbers_without_validated_skill(parity_setup, tmp_path, monkeypatch):
     s = parity_setup
     engine = _engine(parity_setup, tmp_path, monkeypatch, skill=(False, "no skill over local climatology in zone 'x'"))
